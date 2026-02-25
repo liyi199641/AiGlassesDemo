@@ -37,7 +37,7 @@
 直接集成方式：
 
 ```gradle
-implementation("com.fission.wear.glasses:sdk:1.0.2")
+implementation("com.fission.wear.glasses:sdk:1.0.9")
 implementation("io.reactivex.rxjava3:rxjava:3.1.6")
 ```
 

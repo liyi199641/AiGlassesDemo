@@ -164,8 +164,10 @@ class HomeViewModel @Inject constructor(
             permissions.add(Manifest.permission.BLUETOOTH_CONNECT)
         }
 
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             permissions.add(Manifest.permission.ACCESS_FINE_LOCATION)
+        }else{
+            permissions.add(Manifest.permission.ACCESS_COARSE_LOCATION)
         }
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -235,7 +237,7 @@ class HomeViewModel @Inject constructor(
                         viewModelScope.launch {
                             bluetoothDataManager.saveBluetoothState(ConnectionState.CONNECTED.value)
                         }
-
+                        
                         // 启动 AI 助手前台保活服务
                         AiAssistantService.start(context)
 
@@ -318,7 +320,7 @@ class HomeViewModel @Inject constructor(
     }
 
     fun startScanDevice() {
-        GlassesManage.initialize(context, 2)
+        GlassesManage.initialize(context, GlassesConstant.GLASSES_CHANNEL_LY)
         if (_uiState.value.isScanning) return
         GlassesManage.startScanBleDevices(
             bleScanConfig = BleScanConfig(isContinuousScan = false, scanDuration = 120000),
@@ -331,7 +333,7 @@ class HomeViewModel @Inject constructor(
     }
 
     fun connectDevice(mac: String, name: String) {
-        GlassesManage.initialize(context, 2)
+        GlassesManage.initialize(context, GlassesConstant.GLASSES_CHANNEL_LY)
         GlassesManage.stopScanBleDevices(context)
         if (mac.isEmpty()) {
             viewModelScope.launch {

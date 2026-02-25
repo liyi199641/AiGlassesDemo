@@ -13,6 +13,7 @@ import com.lw.ai.glasses.ui.assistant.AiAssistantScreen
 import com.lw.ai.glasses.ui.call.CallScreen
 import com.lw.ai.glasses.ui.home.HomeScreen
 import com.lw.ai.glasses.ui.image.ImageScreen
+import com.lw.ai.glasses.ui.imageocr.ImageTranslateScreen
 import com.lw.ai.glasses.ui.live.LiveScreen
 import com.lw.ai.glasses.ui.setting.SettingScreen
 import com.lw.ai.glasses.ui.translate.TranslatorScreen
@@ -86,6 +87,12 @@ fun AppNavHost() {
 
         composable(Screen.Call.route) {
             CallScreen (onNavigateBack = {
+                navController.popBackStack()
+            })
+        }
+
+        composable(Screen.TranslateImage.route) {
+            ImageTranslateScreen(onNavigateBack = {
                 navController.popBackStack()
             })
         }

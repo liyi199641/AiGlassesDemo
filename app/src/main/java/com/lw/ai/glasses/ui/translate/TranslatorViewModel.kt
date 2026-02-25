@@ -3,10 +3,10 @@ package com.lw.ai.glasses.ui.translate
 import BaseViewModel
 import android.content.Context
 import androidx.lifecycle.viewModelScope
-import com.blankj.utilcode.util.LogUtils
 import com.fission.wear.glasses.sdk.GlassesManage
 import com.fission.wear.glasses.sdk.constant.GlassesConstant
 import com.fission.wear.glasses.sdk.events.AiTranslationEvent
+import com.fission.wear.glasses.sdk.events.AudioStateEvent
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import com.lw.top.lib_core.data.local.entity.TranslationMessageEntity
@@ -50,6 +50,9 @@ class TranslatorViewModel @Inject constructor(
         viewModelScope.launch {
             GlassesManage.eventFlow().collect { events ->
                 when (events) {
+                    AudioStateEvent.StartRecording         -> {//进入录音，对话模式
+                        GlassesManage.stopVadAudio()
+                    }
                     is AiTranslationEvent.AiTranslationResult -> {
                         val result = events.data
                         val requestId = result.id ?: return@collect

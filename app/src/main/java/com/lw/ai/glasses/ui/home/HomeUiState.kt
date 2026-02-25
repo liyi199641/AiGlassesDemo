@@ -1,6 +1,7 @@
 package com.lw.ai.glasses.ui.home
 
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ImageSearch
 import androidx.compose.material.icons.filled.LiveTv
 import androidx.compose.material.icons.filled.QuestionAnswer
 import androidx.compose.material.icons.filled.Settings
@@ -55,6 +56,12 @@ data class HomeUiState(
                     name = "AI翻译",
                     icon = Icons.Default.Translate,
                     route = "ai_translate"
+                ),
+                Feature(
+                    id = "ai_translate_image",
+                    name = "AI图片翻译",
+                    icon = Icons.Default.ImageSearch,
+                    route = "ai_translate_image"
                 ),
                 Feature(
                     id = "live_streaming",

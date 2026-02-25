@@ -4,6 +4,7 @@ import BaseViewModel
 import android.view.TextureView
 import androidx.lifecycle.viewModelScope
 import com.blankj.utilcode.util.LogUtils
+import com.blankj.utilcode.util.ToastUtils
 import com.fission.wear.glasses.sdk.GlassesManage
 import com.fission.wear.glasses.sdk.events.AiTranslationEvent
 import com.fission.wear.glasses.sdk.events.CmdResultEvent
@@ -63,6 +64,10 @@ class CallViewModel @Inject constructor(
                             remote = pendingRemoteView
                         )
                         _uiState.update { it.copy(isInCall = true, isLoading = false) }
+                    }
+
+                    is CmdResultEvent.VoiceRoomParamsFailEvent ->{
+                        ToastUtils.showLong("创建房间失败：${event.msg}")
                     }
 
                     is CmdResultEvent.CallConnected -> {
