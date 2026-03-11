@@ -51,3 +51,15 @@
 -AI通话新增创建房间异常事件
 -AI实时翻译添加实时播报
 -新增AI图片翻译
+
+1.1.0 更新内容：
+- 蓝牙兼容性问题处理
+  1.Android 11级以下无法连接BT
+  2.部分手机无法BT半配对状态，再次配对失败
+
+1.1.1 更新内容：
+1.新增AI日程功能（详见：AiAssistantViewModel.kt ）
+2.新增AI模型切换功能（配置方法：GlassesManage.connectAiAssistant()）
+3.优化BT经典蓝牙连接
+4.优化OTA升级功能
+5.修复AI对话语音闪退bug

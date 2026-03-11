@@ -8,6 +8,7 @@ import com.blankj.utilcode.util.LogUtils
 import com.fission.wear.glasses.sdk.GlassesManage
 import com.fission.wear.glasses.sdk.data.dto.AiChatMessageDTO
 import com.fission.wear.glasses.sdk.data.dto.AiContentType
+import com.fission.wear.glasses.sdk.data.model.McpScheduleData
 import com.fission.wear.glasses.sdk.events.AiAssistantEvent
 import com.fission.wear.glasses.sdk.events.AudioStateEvent
 import com.fission.wear.glasses.sdk.events.CmdResultEvent
@@ -16,8 +17,12 @@ import com.lw.top.lib_core.data.repository.AiAssistantRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import jakarta.inject.Inject
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import java.io.File
 
@@ -30,6 +35,51 @@ class AiAssistantViewModel @Inject constructor(
     val uiState: StateFlow<AiAssistantUiState> = _uiState
 
     private var currentMessage: AiAssistantEntity? = null
+    private val _showConfirmDialog = MutableStateFlow(false)
+    val showConfirmDialog: StateFlow<Boolean> = _showConfirmDialog.asStateFlow()
+
+    private val _navigateToCalendar = MutableSharedFlow<McpScheduleData>()
+    val navigateToCalendar: SharedFlow<McpScheduleData> = _navigateToCalendar.asSharedFlow()
+
+    private val _pendingCalendarEvent = MutableStateFlow<McpScheduleData?>(null)
+    val pendingCalendarEvent: SharedFlow<McpScheduleData?> = _pendingCalendarEvent.asStateFlow()
+
+    /**
+     * 触发显示确认弹窗（暂存日程事件）
+     */
+    fun triggerConfirmDialog(event:McpScheduleData) {
+        viewModelScope.launch {
+            _pendingCalendarEvent.value = event
+            _showConfirmDialog.emit(true) // 显示弹窗
+        }
+    }
+
+    /**
+     * 用户确认添加日程
+     */
+    fun confirmAddCalendar() {
+        viewModelScope.launch {
+            _pendingCalendarEvent.value?.let {
+                _navigateToCalendar.emit(it) // 发送唤起日历指令
+            }
+            _showConfirmDialog.emit(false) // 隐藏弹窗
+            _pendingCalendarEvent.value = null // 清空暂存事件
+        }
+    }
+
+    /**
+     * 用户取消添加
+     */
+    fun cancelAddCalendar() {
+        viewModelScope.launch {
+            _showConfirmDialog.emit(false) // 隐藏弹窗
+            _pendingCalendarEvent.value = null // 清空暂存事件
+        }
+    }
+
+    fun createSampleCalendarEvent(schedule:McpScheduleData) {
+        triggerConfirmDialog(schedule)
+    }
 
     init {
         loadHistoryMessages()
@@ -67,6 +117,10 @@ class AiAssistantViewModel @Inject constructor(
         viewModelScope.launch {
             GlassesManage.eventFlow().collect { event ->
                 when (event) {
+                    is AiAssistantEvent.AiScheduleResult ->{
+                        createSampleCalendarEvent(event.data)
+                    }
+
                     is AiAssistantEvent.AiAssistantResult -> {
                         LogUtils.d("AiAssistantEvent.AiAssistantResult${event.data}")
                         handleStreamingResult(event.data)

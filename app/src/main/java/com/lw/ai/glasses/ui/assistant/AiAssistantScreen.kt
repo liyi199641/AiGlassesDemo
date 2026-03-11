@@ -1,5 +1,7 @@
 package com.lw.ai.glasses.ui.assistant
 
+import android.content.Intent
+import android.provider.CalendarContract
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -17,6 +19,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -38,11 +41,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
+import com.fission.wear.glasses.sdk.data.model.McpScheduleData
 import com.lw.ai.glasses.ui.theme.components.TypewriterText
 import com.lw.top.lib_core.data.local.entity.AiAssistantEntity
+import kotlinx.coroutines.flow.collectLatest
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -52,6 +59,33 @@ fun AiAssistantScreen(
 ) {
 
     val uiState by viewModel.uiState.collectAsState()
+    val context = LocalContext.current
+    val dialogContent by viewModel.pendingCalendarEvent.collectAsStateWithLifecycle(null)
+    val showConfirmDialog by viewModel.showConfirmDialog.collectAsStateWithLifecycle()
+
+    LaunchedEffect(Unit) {
+        viewModel.navigateToCalendar.collectLatest { event ->
+            launchCalendarIntent(context, event)
+        }
+    }
+
+    if (showConfirmDialog) {
+        AlertDialog(
+            onDismissRequest = { viewModel.cancelAddCalendar() }, // 点击外部关闭
+            title = { Text(text = "确认添加日程") },
+            text = { Text(text = dialogContent?.event?:"") },
+            confirmButton = {
+                TextButton(onClick = { viewModel.confirmAddCalendar() }) {
+                    Text(text = "确认")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { viewModel.cancelAddCalendar() }) {
+                    Text(text = "取消")
+                }
+            }
+        )
+    }
 
     Scaffold(
         topBar = {
@@ -219,5 +253,31 @@ private fun MessageContent(
                 )
             }
         }
+    }
+}
+
+/**
+ * 唤起日历的逻辑
+ */
+private fun launchCalendarIntent(context: android.content.Context, event: McpScheduleData) {
+    val intent = Intent(Intent.ACTION_INSERT)
+            .setData(CalendarContract.Events.CONTENT_URI)
+            .putExtra(CalendarContract.Events.TITLE, event.event)
+            .putExtra(CalendarContract.Events.DESCRIPTION, event.event)
+            .putExtra(CalendarContract.Events.EVENT_LOCATION, event.location)
+            .putExtra(CalendarContract.EXTRA_EVENT_BEGIN_TIME, event.time * 1000)
+            .putExtra(CalendarContract.EXTRA_EVENT_END_TIME, event.time * 1000 + 1800000)
+            .putExtra(CalendarContract.Events.ALL_DAY, false)
+            .putExtra(
+                CalendarContract.Events.EVENT_TIMEZONE,
+                java.util.Calendar.getInstance().timeZone.id
+            )
+            .putExtra(CalendarContract.Reminders.MINUTES, 30)
+
+    if (intent.resolveActivity(context.packageManager) != null) {
+        context.startActivity(intent)
+    } else {
+        // 这里可通过Snackbar提示，需把snackbarHostState传进来
+        android.widget.Toast.makeText(context, "未找到日历应用", android.widget.Toast.LENGTH_SHORT).show()
     }
 }

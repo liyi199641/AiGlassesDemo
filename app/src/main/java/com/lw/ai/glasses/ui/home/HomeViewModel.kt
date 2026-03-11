@@ -248,7 +248,8 @@ class HomeViewModel @Inject constructor(
                             bluetoothDataManager.getBluetoothName()!!,
                             "6600",
                             "ukuSPzMnpLvLS2TTLL9S8PvUJzfTCHnu",
-                            "tz5dgRLm6tXS8gRr"
+                            "tz5dgRLm6tXS8gRr",
+                            GlassesConstant.AiModelVendor.DEFAULT
                         )
                         GlassesManage.getActionState()
 
