@@ -5,7 +5,9 @@ import androidx.compose.runtime.Stable
 data class SettingUiState(
     val settingItems: List<SettingItem> = emptyList(),
     val disconnectAction: DisconnectActionState = DisconnectActionState(),
-    val isUnbinding: Boolean = false
+    val isUnbinding: Boolean = false,
+    val isSupportLiveSteaming: Boolean = false,
+    val isSupportsQuickVolumeAdjust: Boolean = false
 )
 
 data class SelectOption<T>(
