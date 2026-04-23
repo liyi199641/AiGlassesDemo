@@ -4,6 +4,7 @@ import BaseViewModel
 import androidx.lifecycle.viewModelScope
 import com.blankj.utilcode.util.ToastUtils
 import com.fission.wear.glasses.sdk.GlassesManage
+import com.fission.wear.glasses.sdk.constant.GlassesConstant
 import com.fission.wear.glasses.sdk.events.FileSyncEvent
 import com.lw.top.lib_core.data.local.entity.MediaFilesEntity
 import com.lw.top.lib_core.data.repository.PhotoRepository
@@ -72,7 +73,7 @@ class ImageViewModel @Inject constructor(
             return
         }
         _syncState.value = SyncState(isSyncing = true)
-        GlassesManage.syncAllMediaFile()
+        GlassesManage.syncAllMediaFile(GlassesConstant.WifiMode.P2P_MODE)
     }
 
     fun observeGlassesEvents() {

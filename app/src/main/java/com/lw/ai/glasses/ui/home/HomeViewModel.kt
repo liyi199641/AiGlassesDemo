@@ -12,10 +12,14 @@ import com.blankj.utilcode.util.ToastUtils
 import com.fission.wear.glasses.sdk.GlassesManage
 import com.fission.wear.glasses.sdk.config.BleComConfig
 import com.fission.wear.glasses.sdk.config.BleScanConfig
+import com.fission.wear.glasses.sdk.config.SdkConfig
 import com.fission.wear.glasses.sdk.constant.GlassesConstant
 import com.fission.wear.glasses.sdk.constant.GlassesConstant.ACTION_INDEX_MUSIC
+import com.fission.wear.glasses.sdk.constant.GlassesConstant.ACTION_INDEX_SINGLE_TOUCH
 import com.fission.wear.glasses.sdk.constant.GlassesConstant.ACTION_INDEX_WEAR
+import com.fission.wear.glasses.sdk.constant.GlassesConstant.ChannelType
 import com.fission.wear.glasses.sdk.events.AiAssistantEvent
+import com.fission.wear.glasses.sdk.events.AudioStateEvent
 import com.fission.wear.glasses.sdk.events.CmdResultEvent
 import com.fission.wear.glasses.sdk.events.ConnectionStateEvent
 import com.fission.wear.glasses.sdk.events.ScanStateEvent
@@ -54,6 +58,8 @@ class HomeViewModel @Inject constructor(
 
     private val _navigationEvent = MutableSharedFlow<String>()
     val navigationEvent = _navigationEvent.asSharedFlow()
+
+    private val useSdkAIServer: Boolean = true //使用sdkAI服务
 
     init {
         viewModelScope.launch {
@@ -164,10 +170,14 @@ class HomeViewModel @Inject constructor(
             permissions.add(Manifest.permission.BLUETOOTH_CONNECT)
         }
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            permissions.add(Manifest.permission.ACCESS_FINE_LOCATION)
-        }else{
-            permissions.add(Manifest.permission.ACCESS_COARSE_LOCATION)
+        when {
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.O -> {
+                // Android 8+：读取 Wi‑Fi SSID / legacy AP 连接轮询依赖真实 SSID，需精确位置授权
+                permissions.add(Manifest.permission.ACCESS_FINE_LOCATION)
+            }
+            else -> {
+                permissions.add(Manifest.permission.ACCESS_COARSE_LOCATION)
+            }
         }
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -185,20 +195,34 @@ class HomeViewModel @Inject constructor(
         viewModelScope.launch {
             GlassesManage.eventFlow().collect { events ->
                 when (events) {
+                    is AudioStateEvent.StartRecording ->{
+                        //开始AI录音
+                    }
+                    is AudioStateEvent.ReceivingAudioData ->{
+                        //AI音频流
+                    }
+                    is AudioStateEvent.StopRecording ->{
+                        //结束AI录音
+                    }
+                    is AudioStateEvent.CancelRecording ->{
+                        //取消录音
+                    }
+
                     is ScanStateEvent.DeviceFound -> {
                         _uiState.update { state ->
                             state.copy(
                                 scannedDevices = state.scannedDevices
-                                    .plus(events.data)
-                                    .distinctBy { it.bleDevice.macAddress }
-                                    .sortedByDescending { it.rssi }
-                                    .filter {
-                                        val name = it.bleDevice.name ?: ""
-                                        name.contains("Glass", ignoreCase = true)
-                                                || name.contains("AG66", ignoreCase = true)
-                                                || name.contains("Tesee", ignoreCase = true)
-                                                || name.contains("AG188", ignoreCase = true)
-                                    }
+                                        .plus(events.data)
+                                        .distinctBy { it.bleDevice.macAddress }
+                                        .sortedByDescending { it.rssi }
+                                        .filter {
+                                            val name = it.bleDevice.name ?: ""
+                                            name.contains("Glass", ignoreCase = true)
+                                            || name.contains("AG66", ignoreCase = true)
+                                            || name.contains("AG19", ignoreCase = true)
+                                            || name.contains("Tesee", ignoreCase = true)
+                                            || name.contains("AG188", ignoreCase = true)
+                                        }
                             )
                         }
                     }
@@ -293,13 +317,16 @@ class HomeViewModel @Inject constructor(
                     is CmdResultEvent.ActionSync -> {
                         when (events.type) {
 
+                            ACTION_INDEX_SINGLE_TOUCH-> {
+                                LogUtils.d("actionIndex","单击事件 ${events.state}")
+                            }
                             ACTION_INDEX_WEAR -> {
-                                LogUtils.d("佩戴状态发生变化${events.state}")
+                                LogUtils.d("actionIndex","佩戴状态发生变化${events.state}")
                             }
 
                             ACTION_INDEX_MUSIC -> {
                                 //App 设备翻译时，App自行处理逻辑，开启录音。关闭音乐等逻辑
-                                LogUtils.d("轻触设备，音乐状态发生变化${events.state}")
+                                LogUtils.d("actionIndex","轻触设备，音乐状态发生变化${events.state}")
                             }
 
                             else -> {
@@ -321,20 +348,20 @@ class HomeViewModel @Inject constructor(
     }
 
     fun startScanDevice() {
-        GlassesManage.initialize(context, GlassesConstant.GLASSES_CHANNEL_LY)
+        GlassesManage.initialize(SdkConfig(context, ChannelType.LY, LogUtils.V,useSdkAIServer) )
         if (_uiState.value.isScanning) return
         GlassesManage.startScanBleDevices(
             bleScanConfig = BleScanConfig(isContinuousScan = false, scanDuration = 120000),
             scanSettings = ScanSettings.Builder()
-                .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
-                .setCallbackType(ScanSettings.CALLBACK_TYPE_ALL_MATCHES)
-                .build(),
+                    .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
+                    .setCallbackType(ScanSettings.CALLBACK_TYPE_ALL_MATCHES)
+                    .build(),
             scanFilters = arrayOf(ScanFilter.Builder().build())
         )
     }
 
     fun connectDevice(mac: String, name: String) {
-        GlassesManage.initialize(context, GlassesConstant.GLASSES_CHANNEL_LY)
+        GlassesManage.initialize(SdkConfig(context, ChannelType.LY, LogUtils.V,useSdkAIServer))
         GlassesManage.stopScanBleDevices(context)
         if (mac.isEmpty()) {
             viewModelScope.launch {
@@ -346,7 +373,7 @@ class HomeViewModel @Inject constructor(
                 }
             }
         } else {
-            GlassesManage.connect(BleComConfig(context, mac))
+            GlassesManage.connect(BleComConfig(context, mac,false))
             viewModelScope.launch {
                 bluetoothDataManager.saveBluetoothDevice(mac, name)
             }
