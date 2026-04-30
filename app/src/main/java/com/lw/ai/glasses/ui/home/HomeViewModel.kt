@@ -222,6 +222,7 @@ class HomeViewModel @Inject constructor(
                                             || name.contains("AG19", ignoreCase = true)
                                             || name.contains("Tesee", ignoreCase = true)
                                             || name.contains("AG188", ignoreCase = true)
+                                            || name.contains("Xinmo G1", ignoreCase = true)
                                         }
                             )
                         }
