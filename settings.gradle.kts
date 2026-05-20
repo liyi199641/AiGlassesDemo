@@ -17,6 +17,7 @@ dependencyResolutionManagement {
         google()
         mavenCentral()
         maven { url = uri("https://repo.repsy.io/mvn/linwear/android") }
+        maven { url = uri("https://artifact.bytedance.com/repository/AwemeOpenSDK") }
 
         maven {
             url = uri("https://artifact.bytedance.com/repository/encop_and_sol_ai_product/")

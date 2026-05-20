@@ -1,3 +1,4 @@
+package com.lw.ai.glasses.ui.theme.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -18,6 +19,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.lw.ai.glasses.ui.theme.CardBackground
+import com.lw.ai.glasses.ui.theme.LineBorder
+import com.lw.ai.glasses.ui.theme.TextPrimary
+import com.lw.ai.glasses.ui.theme.TextTertiary
 
 @Composable
 fun SimpleSwitchTabs(

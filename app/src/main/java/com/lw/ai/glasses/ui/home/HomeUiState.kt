@@ -9,9 +9,11 @@ import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.SystemUpdate
 import androidx.compose.material.icons.filled.Translate
 import androidx.compose.material.icons.filled.VideoCall
+import androidx.annotation.StringRes
+import androidx.compose.material.icons.filled.Functions
 import androidx.compose.ui.graphics.vector.ImageVector
-import com.polidea.rxandroidble3.scan.ScanResult
-
+import com.fission.wear.glasses.sdk.constant.GlassesConstant
+import com.lw.ai.glasses.R
 enum class ConnectionState(val value: Int) {
     IDLE(0),
     CONNECTING(1),
@@ -26,13 +28,14 @@ enum class ConnectionState(val value: Int) {
 }
 
 data class HomeUiState(
-    val scannedDevices: List<ScanResult> = emptyList(),
     val isScanning: Boolean = false,
     val connectionState: ConnectionState = ConnectionState.IDLE,
     val batteryLevel: Int = -1,
     val isCharging: Boolean? = null,
     val connectedDeviceName: String? = null,
     val pendingSyncPhotosCount: Int = 0,
+    val selectedEnvironment: GlassesConstant.ServerEnvironment = GlassesConstant.ServerEnvironment.CHINA,
+    val localEnvironmentWsUrl: String = GlassesConstant.ServerEnvironment.LOCAL.wsUrl,
     val features: List<Feature> = emptyList()
 ) {
     companion object {
@@ -40,50 +43,56 @@ data class HomeUiState(
             return listOf(
                 Feature(
                     id = "sync_photos", // 使用路由作为唯一ID
-                    name = "同步图片",
+                    nameRes = R.string.feature_sync_photos,
                     icon = Icons.Default.Sync,
                     route = "sync_photos",
                     badgeCount = pendingSyncPhotosCount
                 ),
                 Feature(
+                    id = "device_control",
+                    nameRes = R.string.feature_device_control,
+                    icon = Icons.Default.Functions,
+                    route = "device_control"
+                ),
+                Feature(
                     id = "ai_chat",
-                    name = "AI对话/识图",
+                    nameRes = R.string.feature_ai_chat,
                     icon = Icons.Default.QuestionAnswer,
                     route = "assistant"
                 ),
                 Feature(
                     id = "ai_translate",
-                    name = "AI翻译",
+                    nameRes = R.string.feature_ai_translate,
                     icon = Icons.Default.Translate,
                     route = "ai_translate"
                 ),
                 Feature(
                     id = "ai_translate_image",
-                    name = "AI图片翻译",
+                    nameRes = R.string.feature_ai_image_translate,
                     icon = Icons.Default.ImageSearch,
                     route = "ai_translate_image"
                 ),
                 Feature(
                     id = "live_streaming",
-                    name = "直播",
+                    nameRes = R.string.feature_live_streaming,
                     icon = Icons.Default.LiveTv,
                     route = "live_streaming"
                 ),
                 Feature(
                     id = "av_call",
-                    name = "音视频通话",
+                    nameRes = R.string.feature_av_call,
                     icon = Icons.Default.VideoCall, // 如果没有 VideoCall，也可以用 Icons.Default.Call
                     route = "av_call"
                 ),
                 Feature(
                     id = "glasses_settings",
-                    name = "眼镜设置",
+                    nameRes = R.string.feature_glasses_settings,
                     icon = Icons.Default.Settings,
                     route = "glasses_settings"
                 ),
                 Feature(
                     id = "ota_update",
-                    name = "固件升级",
+                    nameRes = R.string.feature_ota_update,
                     icon = Icons.Default.SystemUpdate,
                     route = "ota_update"
                 )
@@ -94,7 +103,7 @@ data class HomeUiState(
 
 data class Feature(
     val id: String,
-    val name: String,
+    @StringRes val nameRes: Int,
     val icon: ImageVector,
     val route: String,
     val badgeCount: Int? = null

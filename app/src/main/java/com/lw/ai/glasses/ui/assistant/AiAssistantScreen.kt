@@ -42,11 +42,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
 import com.fission.wear.glasses.sdk.data.model.McpScheduleData
+import com.lw.ai.glasses.R
 import com.lw.ai.glasses.ui.theme.components.TypewriterText
 import com.lw.top.lib_core.data.local.entity.AiAssistantEntity
 import kotlinx.coroutines.flow.collectLatest
@@ -72,30 +74,32 @@ fun AiAssistantScreen(
     if (showConfirmDialog) {
         AlertDialog(
             onDismissRequest = { viewModel.cancelAddCalendar() }, // 点击外部关闭
-            title = { Text(text = "确认添加日程") },
+            title = { Text(text = stringResource(R.string.add_calendar_confirm_title)) },
             text = { Text(text = dialogContent?.event?:"") },
             confirmButton = {
                 TextButton(onClick = { viewModel.confirmAddCalendar() }) {
-                    Text(text = "确认")
+                    Text(text = stringResource(R.string.confirm))
                 }
             },
             dismissButton = {
                 TextButton(onClick = { viewModel.cancelAddCalendar() }) {
-                    Text(text = "取消")
+                    Text(text = stringResource(R.string.cancel))
                 }
             }
         )
     }
 
+
+
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("AI 助手") },
+                title = { Text(stringResource(R.string.ai_assistant_title)) },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "返回"
+                            contentDescription = stringResource(R.string.back)
                         )
                     }
                 },
@@ -103,7 +107,7 @@ fun AiAssistantScreen(
                     TextButton(onClick = {
                         viewModel.clearAllMessages()
                     }) {
-                        Text("清空记录")
+                        Text(stringResource(R.string.clear_records))
                     }
                 }
             )
@@ -113,8 +117,8 @@ fun AiAssistantScreen(
             messages = uiState.messages,
             streamingMessageId = uiState.streamingMessageId,
             modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
+                    .fillMaxSize()
+                    .padding(innerPadding)
         )
     }
 }
@@ -138,7 +142,7 @@ private fun ConversationList(
             modifier = modifier.fillMaxSize(),
             contentAlignment = Alignment.Center
         ) {
-            Text("暂无对话，快给眼镜提问吧")
+            Text(stringResource(R.string.empty_ai_conversation))
         }
     } else {
         LazyColumn(
@@ -219,6 +223,8 @@ private fun MessageContent(
     displayedLength: Int,
     onAnimationEnd: (Int) -> Unit
 ) {
+    val questionImage = stringResource(R.string.question_image)
+    val answerImage = stringResource(R.string.answer_image)
     val backgroundColor = if (isQuestion) {
         MaterialTheme.colorScheme.primaryContainer
     } else {
@@ -228,10 +234,10 @@ private fun MessageContent(
     if (type == "image") {
         AsyncImage(
             model = content,
-            contentDescription = if (isQuestion) "提问图片" else "回答图片",
+            contentDescription = if (isQuestion) questionImage else answerImage,
             modifier = Modifier
-                .widthIn(max = 240.dp)
-                .clip(RoundedCornerShape(12.dp)),
+                    .widthIn(max = 240.dp)
+                    .clip(RoundedCornerShape(12.dp)),
             contentScale = ContentScale.Fit
         )
     } else {
@@ -278,6 +284,6 @@ private fun launchCalendarIntent(context: android.content.Context, event: McpSch
         context.startActivity(intent)
     } else {
         // 这里可通过Snackbar提示，需把snackbarHostState传进来
-        android.widget.Toast.makeText(context, "未找到日历应用", android.widget.Toast.LENGTH_SHORT).show()
+        android.widget.Toast.makeText(context, context.getString(R.string.calendar_app_not_found), android.widget.Toast.LENGTH_SHORT).show()
     }
 }

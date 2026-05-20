@@ -44,12 +44,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.fission.wear.glasses.sdk.constant.GlassesConstant
-import java.util.Locale
+import com.lw.ai.glasses.R
+import com.lw.ai.glasses.utils.titleRes
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -68,17 +70,20 @@ fun UpdateScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("固件升级 (OTA)") },
+                title = { Text(stringResource(R.string.ota_title)) },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
+                        Icon(
+                            Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = stringResource(R.string.back)
+                        )
                     }
                 }
             )
         },
         floatingActionButton = {
             FloatingActionButton(onClick = { filePickerLauncher.launch("*/*") }) {
-                Icon(Icons.Default.Add, contentDescription = "添加新固件")
+                Icon(Icons.Default.Add, contentDescription = stringResource(R.string.add_firmware))
             }
         }
     ) { paddingValues ->
@@ -96,7 +101,7 @@ fun UpdateScreen(
             )
 
             Spacer(Modifier.height(16.dp))
-            Text("最近使用的固件", style = MaterialTheme.typography.titleMedium)
+            Text(stringResource(R.string.recent_firmware), style = MaterialTheme.typography.titleMedium)
             Spacer(Modifier.height(8.dp))
 
             // 文件列表区域
@@ -133,7 +138,13 @@ fun UpdateScreen(
                     .padding(bottom = 16.dp),
                 enabled = uiState.selectedFileId != null && uiState.otaStatus != OtaStatus.UPGRADING
             ) {
-                Text(if (uiState.otaStatus == OtaStatus.UPGRADING) "升级中..." else "开始升级")
+                Text(
+                    if (uiState.otaStatus == OtaStatus.UPGRADING) {
+                        stringResource(R.string.upgrading)
+                    } else {
+                        stringResource(R.string.start_upgrade)
+                    }
+                )
             }
         }
 
@@ -144,7 +155,7 @@ fun UpdateScreen(
 private fun StatusCard(statusText: String, otaStatus: OtaStatus, progress: Int) {
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(16.dp)) {
-            Text("升级状态", style = MaterialTheme.typography.titleMedium)
+            Text(stringResource(R.string.upgrade_status), style = MaterialTheme.typography.titleMedium)
             Spacer(Modifier.height(8.dp))
             Text(
                 text = statusText,
@@ -195,7 +206,7 @@ private fun FirmwareFileItem(
             Column(modifier = Modifier.weight(1f)) {
                 Text(file.name, fontWeight = FontWeight.Bold)
                 Text(
-                    text = String.format(Locale.getDefault(), "%.2f MB", file.sizeInMb),
+                    text = stringResource(R.string.firmware_file_size_mb, file.sizeInMb),
                     style = MaterialTheme.typography.bodySmall,
                     color = LocalContentColor.current.copy(alpha = 0.7f)
                 )
@@ -214,8 +225,8 @@ private fun EmptyState() {
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Icon(Icons.Default.NoteAdd, contentDescription = null, modifier = Modifier.size(48.dp), tint = Color.Gray)
-            Text("暂无固件文件", color = Color.Gray)
-            Text("点击右下角按钮添加", fontSize = 12.sp, color = Color.Gray)
+            Text(stringResource(R.string.empty_firmware_files), color = Color.Gray)
+            Text(stringResource(R.string.tap_add_firmware), fontSize = 12.sp, color = Color.Gray)
         }
     }
 }
@@ -230,7 +241,7 @@ fun OtaTypeSelection(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text("升级类型: ", style = MaterialTheme.typography.bodyLarge)
+        Text(stringResource(R.string.upgrade_type), style = MaterialTheme.typography.bodyLarge)
 
         availableTypes.forEach { otaType ->
             Row(
@@ -244,7 +255,7 @@ fun OtaTypeSelection(
                     onClick = { onTypeSelected(otaType) }
                 )
                 Text(
-                    text = otaType.name,
+                    text = stringResource(otaType.titleRes()),
                     style = MaterialTheme.typography.bodyMedium,
                     modifier = Modifier.padding(start = 4.dp)
                 )

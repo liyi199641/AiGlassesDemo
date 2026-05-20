@@ -1,15 +1,20 @@
 package com.lw.ai.glasses.ui.call
 
 import BaseViewModel
+import android.content.Context
 import android.view.TextureView
 import androidx.lifecycle.viewModelScope
 import com.blankj.utilcode.util.LogUtils
 import com.blankj.utilcode.util.ToastUtils
+import com.fission.wear.glasses.sdk.AiAssistantClient
 import com.fission.wear.glasses.sdk.GlassesManage
+import com.fission.wear.glasses.sdk.events.AgentEvent
 import com.fission.wear.glasses.sdk.events.AiTranslationEvent
 import com.fission.wear.glasses.sdk.events.CmdResultEvent
+import com.lw.ai.glasses.R
 import com.lw.top.lib_core.data.datastore.BluetoothDataManager
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -37,6 +42,7 @@ data class TranslationMessage(
 
 @HiltViewModel
 class CallViewModel @Inject constructor(
+    @ApplicationContext private val context: Context,
     private val bluetoothDataManager: BluetoothDataManager
 ) : BaseViewModel() {
 
@@ -48,12 +54,25 @@ class CallViewModel @Inject constructor(
 
     init {
         viewModelScope.launch {
-            GlassesManage.eventFlow().collect { event ->
+            viewModelScope.launch {
+                AiAssistantClient.getInstance().aiAgentEventFlow().collect {
+                        event ->
+                    when (event) {
+                        is AiTranslationEvent.AiTranslationResult -> {
+                            handleStreamingTranslation(event.data)
+                        }
+                        else -> {
+
+                        }
+                    }
+                }
+            }
+            AiAssistantClient.getInstance().aiAgentEventFlow().collect { event ->
                 when (event) {
-                    is CmdResultEvent.VoiceRoomParamsEvent -> {
+                    is AgentEvent.VoiceRoomParamsEvent -> {
                         val params = event.params
                         LogUtils.d("创建房间成功：$params")
-                        GlassesManage.startCall(
+                        AiAssistantClient.getInstance().startCall(
                             appID = params.appId.toLong(),
                             token = params.appToken,
                             roomID = params.roomId,
@@ -63,31 +82,34 @@ class CallViewModel @Inject constructor(
                             local = pendingLocalView,
                             remote = pendingRemoteView
                         )
-                        _uiState.update { it.copy(isInCall = true, isLoading = false) }
+                        _uiState.update {
+                            it.copy(
+                                isInCall = true,
+                                isLoading = false,
+                                hostUrl = params.hostUrl
+                            )
+                        }
                     }
 
-                    is CmdResultEvent.VoiceRoomParamsFailEvent ->{
-                        ToastUtils.showLong("创建房间失败：${event.msg}")
+                    is AgentEvent.VoiceRoomParamsFailEvent ->{
+                        ToastUtils.showLong(context.getString(R.string.room_creation_failed, event.msg))
                     }
 
-                    is CmdResultEvent.CallConnected -> {
+                    is AgentEvent.CallConnected -> {
                         _uiState.update { it.copy(isRemoteVideoReady = true) }
                     }
 
-                    is CmdResultEvent.CallDisconnected -> {
+                    is AgentEvent.CallDisconnected -> {
                         endCall()
                     }
 
-                    is CmdResultEvent.RemoteVideoStateEvent -> {
+                    is AgentEvent.RemoteVideoStateEvent -> {
                         LogUtils.d("远端摄像头状态：${event.isMuted}")
                         _uiState.update { it.copy(isRemoteVideoMuted = event.isMuted) }
                     }
 
-                    is AiTranslationEvent.AiTranslationResult -> {
-                        handleStreamingTranslation(event.data)
-                    }
 
-                    is CmdResultEvent.RemoteLanguageEvent->{
+                    is AgentEvent.RemoteLanguageEvent->{
                         LogUtils.d("远端语言：${event.language}")
                     }
 
@@ -120,7 +142,11 @@ class CallViewModel @Inject constructor(
 
             val newMessage = TranslationMessage(
                 id = compositeKey,
-                sender = if (result.isMe) "我" else "对方",
+                sender = if (result.isMe) {
+                    context.getString(R.string.call_sender_me)
+                } else {
+                    context.getString(R.string.call_sender_other)
+                },
                 text = displayContent,
                 isFromMe = result.isMe
             )
@@ -144,7 +170,7 @@ class CallViewModel @Inject constructor(
         _uiState.update { it.copy(isRemoteAudioMuted = nextMuteStatus) }
 
         val volume = if (nextMuteStatus) 0 else 100
-        GlassesManage.setPlayVolume(volume)
+        AiAssistantClient.getInstance().setPlayVolume(volume)
     }
 
     fun setCallMode(mode: CallMode) {
@@ -158,25 +184,25 @@ class CallViewModel @Inject constructor(
     fun toggleMic() {
         val newMuteStatus = !uiState.value.isMicMuted
         _uiState.update { it.copy(isMicMuted = newMuteStatus) }
-        GlassesManage.muteMicrophone(newMuteStatus)
+        AiAssistantClient.getInstance().muteMicrophone(newMuteStatus)
     }
 
     fun toggleSpeaker() {
         val newSpeakerStatus = !uiState.value.isSpeakerOn
         _uiState.update { it.copy(isSpeakerOn = newSpeakerStatus) }
-        GlassesManage.enableSpeaker(newSpeakerStatus)
+        AiAssistantClient.getInstance().enableSpeaker(newSpeakerStatus)
     }
 
     fun toggleVideo() {
         val newMuteStatus = !uiState.value.isVideoMuted
         _uiState.update { it.copy(isVideoMuted = newMuteStatus) }
-        GlassesManage.muteVideo(newMuteStatus)
+        AiAssistantClient.getInstance().muteVideo(newMuteStatus)
     }
 
     fun flipCamera() {
         val nextIsFront = !uiState.value.isFrontCamera
         _uiState.update { it.copy(isFrontCamera = nextIsFront) }
-        GlassesManage.switchCamera(nextIsFront)
+        AiAssistantClient.getInstance().switchCamera(nextIsFront)
     }
 
     fun startCall(localView: TextureView? = null, remoteView: TextureView? = null) {
@@ -187,7 +213,7 @@ class CallViewModel @Inject constructor(
             _uiState.update { it.copy(isLoading = true) }
             val mac = bluetoothDataManager.getBluetoothAddress() ?: ""
 
-            GlassesManage.getVoiceRoomParams(
+            AiAssistantClient.getInstance().getVoiceRoomParams(
                 lang = 140,
                 target = 47,
                 type = if (_uiState.value.callMode == CallMode.VIDEO) 1 else 2,
@@ -198,10 +224,11 @@ class CallViewModel @Inject constructor(
     }
 
     fun endCall() {
-        GlassesManage.endCall()
+        AiAssistantClient.getInstance().endCall()
         _uiState.update {
             it.copy(
                 isInCall = false,
+                hostUrl = null,
                 isRemoteVideoReady = false,
                 translationLogs = emptyList(),
                 isMicMuted = false,

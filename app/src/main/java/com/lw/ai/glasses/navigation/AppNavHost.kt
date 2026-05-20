@@ -4,18 +4,20 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color.Companion.White
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.blankj.utilcode.util.LogUtils
+import com.lw.ai.glasses.navigation.rememberSafeNavigateBack
 import com.lw.ai.glasses.ui.assistant.AiAssistantScreen
 import com.lw.ai.glasses.ui.call.CallScreen
+import com.lw.ai.glasses.ui.devicecontrol.DeviceControlScreen
 import com.lw.ai.glasses.ui.home.HomeScreen
 import com.lw.ai.glasses.ui.image.ImageScreen
 import com.lw.ai.glasses.ui.imageocr.ImageTranslateScreen
 import com.lw.ai.glasses.ui.live.LiveScreen
 import com.lw.ai.glasses.ui.setting.SettingScreen
+import com.lw.ai.glasses.ui.theme.PrimaryBackground
 import com.lw.ai.glasses.ui.translate.TranslatorScreen
 import com.lw.ai.glasses.ui.update.UpdateScreen
 
@@ -24,6 +26,7 @@ import com.lw.ai.glasses.ui.update.UpdateScreen
 @Composable
 fun AppNavHost() {
     val navController = rememberNavController()
+    val navigateBack = rememberSafeNavigateBack(navController)
 
     LaunchedEffect(navController) {
         navController.currentBackStack.collect { backStackEntries ->
@@ -38,7 +41,7 @@ fun AppNavHost() {
     NavHost(
         navController = navController,
         startDestination = Screen.Home.route,
-        modifier = Modifier.background(White)
+        modifier = Modifier.background(PrimaryBackground)
     ) {
 
         composable(Screen.Home.route) {
@@ -50,51 +53,38 @@ fun AppNavHost() {
         }
 
         composable(Screen.Image.route) {
-            ImageScreen(onNavigateBack = {
-                navController.popBackStack()
-            })
+            ImageScreen(onNavigateBack = navigateBack)
+        }
+
+        composable(Screen.DeviceControl.route) {
+            DeviceControlScreen(onNavigateBack = navigateBack)
         }
 
         composable(Screen.Assistant.route) {
-            AiAssistantScreen(onNavigateBack = {
-                navController.popBackStack()
-            })
+            AiAssistantScreen(onNavigateBack = navigateBack)
         }
 
         composable(Screen.Setting.route) {
-            SettingScreen(onNavigateBack = {
-                navController.popBackStack()
-            })
+            SettingScreen(onNavigateBack = navigateBack)
         }
 
         composable(Screen.Update.route) {
-            UpdateScreen(onNavigateBack = {
-                navController.popBackStack()
-            })
+            UpdateScreen(onNavigateBack = navigateBack)
         }
 
         composable(Screen.Translate.route) {
-            TranslatorScreen(onNavigateBack = {
-                navController.popBackStack()
-            })
+            TranslatorScreen(onNavigateBack = navigateBack)
         }
 
         composable(Screen.Live.route) {
-            LiveScreen(onNavigateBack = {
-                navController.popBackStack()
-            })
+            LiveScreen(onNavigateBack = navigateBack)
         }
-
         composable(Screen.Call.route) {
-            CallScreen (onNavigateBack = {
-                navController.popBackStack()
-            })
+            CallScreen(onNavigateBack = navigateBack)
         }
 
         composable(Screen.TranslateImage.route) {
-            ImageTranslateScreen(onNavigateBack = {
-                navController.popBackStack()
-            })
+            ImageTranslateScreen(onNavigateBack = navigateBack)
         }
 
     }

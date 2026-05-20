@@ -28,13 +28,13 @@ desugarJdkLibs = "2.0.4"
 rxjava3 = "3.1.6"
 rxandroid = "3.0.0"
 rxandroidble = "1.19.1"
-glasses="1.1.4"
+glasses="1.1.6"
 media3 = "1.3.1"
 preference = "1.2.1"
 libvlc = "3.6.5"
 instavision-ffmpeg = "2025.08.21"
 volcengine-douyin = "3.1.1"
-
+douyin-open-sdk = "0.2.0.9"
 
 
 [libraries]
@@ -112,7 +112,8 @@ glasses-sdk = { group = "com.fission.wear.glasses", name = "sdk", version.ref = 
 libvlc = { group = "org.videolan.android", name = "libvlc-all", version.ref = "libvlc" }
 instavision-ffmpeg = { group = "ai.instavision", name = "ffmpegkit", version.ref = "instavision-ffmpeg" }
 volcengine-douyin-sdk = { group = "com.volcengine.android", name = "douyin_sdk", version.ref = "volcengine-douyin" }
-
+douyin-open-sdk-common = { group = "com.bytedance.ies.ugc.aweme", name = "opensdk-common", version.ref = "douyin-open-sdk" }
+douyin-open-sdk-china-external = { group = "com.bytedance.ies.ugc.aweme", name = "opensdk-china-external", version.ref = "douyin-open-sdk" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

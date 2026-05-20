@@ -23,6 +23,13 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.blankj.utilcode.util.ToastUtils
 import com.lw.ai.glasses.ui.base.data.ConfirmationData
+import com.lw.ai.glasses.ui.theme.Black
+import com.lw.ai.glasses.ui.theme.LineBorder
+import com.lw.ai.glasses.ui.theme.PopupGradientColor
+import com.lw.ai.glasses.ui.theme.TextDisabled
+import com.lw.ai.glasses.ui.theme.components.AppButton
+import com.lw.ai.glasses.ui.theme.components.AppText
+import com.lw.ai.glasses.ui.theme.components.ButtonType
 
 @Composable
 fun ConfirmationScreen(

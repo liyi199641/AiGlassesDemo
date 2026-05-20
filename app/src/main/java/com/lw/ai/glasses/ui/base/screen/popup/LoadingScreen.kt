@@ -17,6 +17,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.lw.ai.glasses.R
 import com.lw.ai.glasses.ui.base.screen.PAGAnimation
+import com.lw.ai.glasses.ui.theme.components.AppText
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.libpag.PAGFile

@@ -16,14 +16,23 @@ class AppDataManager @Inject constructor(
 ) {
     private object AppKeys {
         val SERVER_ENVIRONMENT = stringPreferencesKey("server_environment")
+        val LOCAL_SERVER_WS_URL = stringPreferencesKey("local_server_ws_url")
     }
 
     val savedEnvironment: Flow<String?> = dataStore.data.map { preferences ->
         preferences[AppKeys.SERVER_ENVIRONMENT]
     }
 
+    val savedLocalEnvironmentWsUrl: Flow<String?> = dataStore.data.map { preferences ->
+        preferences[AppKeys.LOCAL_SERVER_WS_URL]
+    }
+
     suspend fun getEnvironment(): String? {
         return savedEnvironment.firstOrNull()
+    }
+
+    suspend fun getLocalEnvironmentWsUrl(): String? {
+        return savedLocalEnvironmentWsUrl.firstOrNull()
     }
 
     /**
@@ -32,6 +41,15 @@ class AppDataManager @Inject constructor(
     suspend fun saveEnvironment(envName: String) {
         dataStore.edit { preferences ->
             preferences[AppKeys.SERVER_ENVIRONMENT] = envName
+        }
+    }
+
+    /**
+     * 保存本地环境 WebSocket 地址
+     */
+    suspend fun saveLocalEnvironmentWsUrl(wsUrl: String) {
+        dataStore.edit { preferences ->
+            preferences[AppKeys.LOCAL_SERVER_WS_URL] = wsUrl
         }
     }
 }

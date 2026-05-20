@@ -1,3 +1,4 @@
+package com.lw.ai.glasses.ui.theme.components
 
 import android.annotation.SuppressLint
 import androidx.compose.foundation.background
@@ -23,6 +24,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.lw.ai.glasses.ui.theme.Primary
+import com.lw.ai.glasses.ui.theme.PrimaryBackground
+import com.lw.ai.glasses.ui.theme.TextPrimary
+import com.lw.ai.glasses.ui.theme.TextTertiary
 import kotlinx.coroutines.launch
 
 @SuppressLint("AutoboxingStateCreation")

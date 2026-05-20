@@ -1,3 +1,4 @@
+package com.lw.ai.glasses.ui.theme.components
 
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
@@ -14,6 +15,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
+import com.lw.ai.glasses.ui.theme.CardBackground
 
 object ShimmerAnimation {
     @Composable

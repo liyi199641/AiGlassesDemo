@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+    import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -46,6 +47,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -53,6 +55,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.lw.ai.glasses.R
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -64,20 +67,19 @@ fun SettingScreen(
     var showInputDialog by remember { mutableStateOf(false) }
     var showRebootConfirm by remember { mutableStateOf(false) }
     var showResetConfirm by remember { mutableStateOf(false) }
-
     if (showRebootConfirm) {
         AlertDialog(
             onDismissRequest = { showRebootConfirm = false },
-            title = { Text("重启设备") },
-            text = { Text("确定要重启眼镜吗？") },
+            title = { Text(stringResource(R.string.reboot_device)) },
+            text = { Text(stringResource(R.string.reboot_device_confirm_message)) },
             confirmButton = {
                 TextButton(onClick = {
                     viewModel.rebootDevice()
                     showRebootConfirm = false
-                }) { Text("确认") }
+                }) { Text(stringResource(R.string.confirm)) }
             },
             dismissButton = {
-                TextButton(onClick = { showRebootConfirm = false }) { Text("取消") }
+                TextButton(onClick = { showRebootConfirm = false }) { Text(stringResource(R.string.cancel)) }
             }
         )
     }
@@ -85,16 +87,16 @@ fun SettingScreen(
     if (showResetConfirm) {
         AlertDialog(
             onDismissRequest = { showResetConfirm = false },
-            title = { Text("恢复出厂设置") },
-            text = { Text("此操作将清除眼镜所有设置并重启，确定继续吗？") },
+            title = { Text(stringResource(R.string.restore_factory)) },
+            text = { Text(stringResource(R.string.restore_factory_confirm_message)) },
             confirmButton = {
                 TextButton(onClick = {
                     viewModel.restoreFactorySettings()
                     showResetConfirm = false
-                }) { Text("确认", color = MaterialTheme.colorScheme.error) }
+                }) { Text(stringResource(R.string.confirm), color = MaterialTheme.colorScheme.error) }
             },
             dismissButton = {
-                TextButton(onClick = { showResetConfirm = false }) { Text("取消") }
+                TextButton(onClick = { showResetConfirm = false }) { Text(stringResource(R.string.cancel)) }
             }
         )
     }
@@ -102,12 +104,12 @@ fun SettingScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("设备设置") },
+                title = { Text(stringResource(R.string.settings_title)) },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "返回"
+                            contentDescription = stringResource(R.string.back)
                         )
                     }
                 }
@@ -122,72 +124,80 @@ fun SettingScreen(
                     .padding(16.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
             ) {
-                Text(uiState.disconnectAction.title)
+                Text(stringResource(uiState.disconnectAction.titleRes))
             }
         }
     ) { paddingValues ->
-        LazyColumn(
+        Box(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
         ) {
-            itemsIndexed(
-                items = uiState.settingItems,
-                key = { index, item ->
-                    when (item) {
-                        is SettingItem.ActionItem -> "action_${item.id}"
-                        is SettingItem.DropdownItem<*> -> "dropdown_${item.id}"
-                        is SettingItem.InfoItem -> "info_${item.title}"
-                        is SettingItem.SwitchItem -> "switch_${item.id}"
-                        is SettingItem.Divider -> "divider_$index"
-                    }
-                }
-            ) { _, item ->
-                when (item) {
-                    is SettingItem.DropdownItem<*> -> {
-                        DropdownSettingItem(item = item, onItemSelected = viewModel::onSettingSelected)
-                    }
-                    is SettingItem.SwitchItem -> {    SwitchSettingItem(
-                        item = item,
-                        onCheckedChange = { isChecked ->
-                            viewModel.setVoiceWakeUp(isChecked)
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(bottom = 16.dp)
+            ) {
+                itemsIndexed(
+                    items = uiState.settingItems,
+                    key = { index, item ->
+                        when (item) {
+                            is SettingItem.ActionItem -> "action_${item.id}"
+                            is SettingItem.DropdownItem<*> -> "dropdown_${item.id}"
+                            is SettingItem.InfoItem -> "info_${item.title}"
+                            is SettingItem.SwitchItem -> "switch_${item.id}"
+                            is SettingItem.Divider -> "divider_$index"
                         }
-                    )
                     }
-                    is SettingItem.ActionItem -> {
-                        ActionSettingItem(item = item) {
-                            when (item.id) {
-                                "record_duration" -> showInputDialog = true
-                                "reboot_device" -> showRebootConfirm = true
-                                "restore_factory" -> showResetConfirm = true
+                ) { _, item ->
+                    when (item) {
+                        is SettingItem.DropdownItem<*> -> {
+                            DropdownSettingItem(item = item, onItemSelected = viewModel::onSettingSelected)
+                        }
+                        is SettingItem.SwitchItem -> {
+                            SwitchSettingItem(
+                                item = item,
+                                onCheckedChange = { isChecked ->
+                                    when (item.id) {
+                                        "wear_detection" -> viewModel.setWearDetectionEnabled(isChecked)
+                                        "voice_disable_local" -> viewModel.setLocalOfflineVoiceEnabled(isChecked)
+                                        "voice_disable_opus" -> viewModel.setOpusStreamPushEnabled(isChecked)
+                                    }
+                                }
+                            )
+                        }
+                        is SettingItem.ActionItem -> {
+                            ActionSettingItem(item = item) {
+                                when (item.id) {
+                                    "record_duration" -> showInputDialog = true
+                                    "reboot_device" -> showRebootConfirm = true
+                                    "restore_factory" -> showResetConfirm = true
+                                }
                             }
                         }
-                    }
-                    is SettingItem.InfoItem -> {
-                        InfoSettingItem(item = item)
-                    }
-                    is SettingItem.Divider -> {
-                        HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+                        is SettingItem.InfoItem -> {
+                            InfoSettingItem(item = item)
+                        }
+                        is SettingItem.Divider -> {
+                            HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+                        }
                     }
                 }
             }
+
+            if (showInputDialog) {
+                RecordDurationInputDialog(
+                    onDismiss = { showInputDialog = false },
+                    onConfirm = { duration ->
+                        viewModel.onRecordDurationChanged(duration)
+                        showInputDialog = false
+                    }
+                )
+            }
+
+            if (uiState.isUnbinding) {
+                LoadingDialog(text = stringResource(R.string.unbinding))
+            }
         }
-
-        if (showInputDialog) {
-            RecordDurationInputDialog(
-                onDismiss = { showInputDialog = false },
-                onConfirm = { duration ->
-                    viewModel.onRecordDurationChanged(duration)
-                    showInputDialog = false
-                }
-            )
-        }
-
-
-        if (uiState.isUnbinding) {
-            LoadingDialog(text = "正在解除绑定...")
-        }
-
     }
 }
 
@@ -199,12 +209,12 @@ private fun RecordDurationInputDialog(
     var text by remember { mutableStateOf("") }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("设置录像时长") },
+        title = { Text(stringResource(R.string.set_record_duration)) },
         text = {
             OutlinedTextField(
                 value = text,
                 onValueChange = { text = it.filter { char -> char.isDigit() } },
-                label = { Text("时长（秒）") },
+                label = { Text(stringResource(R.string.duration_seconds_label)) },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
             )
@@ -214,12 +224,12 @@ private fun RecordDurationInputDialog(
                 onClick = { text.toIntOrNull()?.let(onConfirm) },
                 enabled = text.isNotBlank()
             ) {
-                Text("确认")
+                Text(stringResource(R.string.confirm))
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("取消")
+                Text(stringResource(R.string.cancel))
             }
         }
     )
@@ -241,7 +251,7 @@ fun <T> DropdownSettingItem(
         ) {
             Icon(
                 imageVector = Icons.Default.ArrowDropDown,
-                contentDescription = "选择",
+                contentDescription = stringResource(R.string.select),
                 tint = MaterialTheme.colorScheme.primary
             )
         }

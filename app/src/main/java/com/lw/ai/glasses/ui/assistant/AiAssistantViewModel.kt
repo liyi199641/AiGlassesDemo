@@ -3,13 +3,13 @@ package com.lw.ai.glasses.ui.assistant
 import BaseViewModel
 import android.content.Context
 import androidx.lifecycle.viewModelScope
-import com.blankj.utilcode.util.ConvertUtils
 import com.blankj.utilcode.util.LogUtils
+import com.fission.wear.glasses.sdk.AiAssistantClient
 import com.fission.wear.glasses.sdk.GlassesManage
 import com.fission.wear.glasses.sdk.data.dto.AiChatMessageDTO
 import com.fission.wear.glasses.sdk.data.dto.AiContentType
 import com.fission.wear.glasses.sdk.data.model.McpScheduleData
-import com.fission.wear.glasses.sdk.events.AiAssistantEvent
+import com.fission.wear.glasses.sdk.events.AgentEvent
 import com.fission.wear.glasses.sdk.events.AudioStateEvent
 import com.fission.wear.glasses.sdk.events.CmdResultEvent
 import com.lw.top.lib_core.data.local.entity.AiAssistantEntity
@@ -34,10 +34,10 @@ class AiAssistantViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(AiAssistantUiState())
     val uiState: StateFlow<AiAssistantUiState> = _uiState
 
-    private var currentMessage: AiAssistantEntity? = null
     private val _showConfirmDialog = MutableStateFlow(false)
     val showConfirmDialog: StateFlow<Boolean> = _showConfirmDialog.asStateFlow()
 
+    private var currentMessage: AiAssistantEntity? = null
     private val _navigateToCalendar = MutableSharedFlow<McpScheduleData>()
     val navigateToCalendar: SharedFlow<McpScheduleData> = _navigateToCalendar.asSharedFlow()
 
@@ -84,6 +84,11 @@ class AiAssistantViewModel @Inject constructor(
     init {
         loadHistoryMessages()
         observeGlassesEvents()
+//
+//        viewModelScope.launch {
+//            delay(2000)
+//            createSampleCalendarEvent(McpScheduleData(System.currentTimeMillis()/1000,"深圳北站","自己","开会"))
+//        }
     }
 
     private fun loadHistoryMessages() {
@@ -102,28 +107,50 @@ class AiAssistantViewModel @Inject constructor(
             _uiState.value = _uiState.value.copy(
                 messages = emptyList()
             )
-            stopVadAudio()
+//            stopVadAudio()
         }
     }
 
-    fun stopVadAudio(){
-        viewModelScope.launch {
-            GlassesManage.stopVadAudio()
-        }
-    }
+//    fun stopVadAudio(){
+//        viewModelScope.launch {
+//            GlassesManage.stopVadAudio()
+//        }
+//    }
 
 
     private fun observeGlassesEvents() {
+
         viewModelScope.launch {
-            GlassesManage.eventFlow().collect { event ->
+            AiAssistantClient.getInstance().aiAgentEventFlow().collect {
+                    event ->
                 when (event) {
-                    is AiAssistantEvent.AiScheduleResult ->{
+                    is AgentEvent.AiScheduleResult  -> {
                         createSampleCalendarEvent(event.data)
                     }
 
-                    is AiAssistantEvent.AiAssistantResult -> {
+                    is AgentEvent.AiAssistantResult -> {
                         LogUtils.d("AiAssistantEvent.AiAssistantResult${event.data}")
                         handleStreamingResult(event.data)
+                    }
+                    else -> {
+
+                    }
+                }
+            }
+        }
+
+        viewModelScope.launch {
+            GlassesManage.eventFlow().collect { event ->
+                when (event) {
+
+                    is CmdResultEvent.ImageFile -> {
+                        event.imageFile?.let {file->
+                            handleStreamingResult(AiChatMessageDTO(
+                                question = file.absolutePath,
+                                questionType = AiContentType.IMAGE_PATH,
+                                isFinished = true)
+                            )
+                        }
                     }
 
                     is AudioStateEvent.StartRecording -> {//唤醒词后开始录音
@@ -142,13 +169,6 @@ class AiAssistantViewModel @Inject constructor(
                         LogUtils.d("停止录音")
                     }
 
-                    is CmdResultEvent.ImageData -> {
-                        LogUtils.d("完整的图片数据：${event.data.toByteArray()}")
-                        val bitmap = ConvertUtils.bytes2Bitmap(event.data.toByteArray())
-                        val path = "${context.externalCacheDir}/${System.currentTimeMillis()}.jpg"
-                        val file = File(path)
-                        //调用大模型 识别图片。播报结果
-                    }
                     else -> {
 
                     }

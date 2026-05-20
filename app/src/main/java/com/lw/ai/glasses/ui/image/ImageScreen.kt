@@ -53,6 +53,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -66,6 +67,7 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import coil3.compose.AsyncImage
+import com.lw.ai.glasses.R
 import com.lw.top.lib_core.data.local.entity.MediaFilesEntity
 import java.io.File
 import kotlin.math.log10
@@ -81,12 +83,12 @@ fun ImageScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("同步相册") },
+                title = { Text(stringResource(R.string.sync_album_title)) },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "返回"
+                            contentDescription = stringResource(R.string.back)
                         )
                     }
                 },
@@ -94,7 +96,7 @@ fun ImageScreen(
                     TextButton(onClick = {
                         viewModel.clearAllPhotos()
                     }) {
-                        Text("清空记录")
+                        Text(stringResource(R.string.clear_records))
                     }
                 }
             )
@@ -122,7 +124,7 @@ fun ImageScreen(
                     modifier = Modifier.fillMaxSize(),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text("暂无图片，请点击同步")
+                    Text(stringResource(R.string.empty_images_hint))
                 }
             } else {
                 LazyVerticalGrid(
@@ -150,7 +152,7 @@ fun ImageScreen(
                                 if (isVideo) {
                                     Icon(
                                         imageVector = Icons.Default.PlayCircleOutline,
-                                        contentDescription = "Play Video",
+                                        contentDescription = stringResource(R.string.play_video),
                                         tint = Color.White.copy(alpha = 0.8f), // 使用带透明度的白色
                                         modifier = Modifier
                                             .align(Alignment.Center)
@@ -244,7 +246,7 @@ private fun SyncStatusHeader(
                 enabled = !isSyncing,
                 contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
             ) {
-                Text("同步")
+                Text(stringResource(R.string.sync))
             }
         }
     }
@@ -338,7 +340,7 @@ private fun ZoomableImage(imagePath: String) {
     ) {
         AsyncImage(
             model = imagePath,
-            contentDescription = "Zoomable Image",
+            contentDescription = stringResource(R.string.zoomable_image),
             modifier = Modifier
                 .fillMaxSize()
                 .graphicsLayer(

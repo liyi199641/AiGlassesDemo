@@ -1,16 +1,20 @@
 package com.lw.ai.glasses.ui.setting
 
 import BaseViewModel
+import android.content.Context
 import androidx.lifecycle.viewModelScope
 import com.blankj.utilcode.util.LogUtils
 import com.fission.wear.glasses.sdk.GlassesManage
+import com.fission.wear.glasses.sdk.AiAssistantClient
 import com.fission.wear.glasses.sdk.constant.LyCmdConstant
 import com.fission.wear.glasses.sdk.data.dto.DeviceSettingsStateDTO
 import com.fission.wear.glasses.sdk.data.dto.DeviceVersionInfoDTO
 import com.fission.wear.glasses.sdk.events.CmdResultEvent
+import com.lw.ai.glasses.R
 import com.lw.ai.glasses.ui.home.ConnectionState
 import com.lw.top.lib_core.data.datastore.BluetoothDataManager
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -21,6 +25,7 @@ import kotlin.collections.filterIsInstance
 
 @HiltViewModel
 class SettingViewModel @Inject constructor(
+    @ApplicationContext private val context: Context,
     private val bluetoothDataManager: BluetoothDataManager
 ) : BaseViewModel() {
 
@@ -44,15 +49,9 @@ class SettingViewModel @Inject constructor(
                     is CmdResultEvent.DeviceSupportedFeatures -> {
                         _uiState.update {
                             it.copy(
-                                isSupportLiveSteaming = events.featuresConfigInfo.supportLiveStreaming,
-                                isSupportsQuickVolumeAdjust = events.featuresConfigInfo.supportQuicklyAdjustVolume
+                                isSupportLiveSteaming = events.featuresConfigInfo.supportLiveStreaming
                             )
                         }
-
-                        GlassesManage.getVolume()
-                    }
-                    is CmdResultEvent.DeviceVolumeState ->{
-                        addVolumeSetting(events.systemVolume,events.mediaVolume,events.callVolume)
                     }
                     is CmdResultEvent.DeviceVersionInfoEvent -> {
                         latestDeviceVersionInfo = events.data
@@ -96,7 +95,7 @@ class SettingViewModel @Inject constructor(
     private fun loadInitialSettings() {
         GlassesManage.requestDeviceVersionInfo()
         GlassesManage.getDeviceSettingsState()
-        GlassesManage.getVoiceCommandDisableState()
+        GlassesManage.getVoiceWakeUp()
         GlassesManage.getDeviceSupportedFeatures()
     }
 
@@ -105,22 +104,13 @@ class SettingViewModel @Inject constructor(
         _uiState.update { currentState ->
             val newItems = currentState.settingItems.map { item ->
                 if (item is SettingItem.ActionItem && item.id == "record_duration") {
-                    item.copy(summary = "$duration 秒")
+                    item.copy(summary = context.getString(R.string.duration_seconds, duration))
                 } else {
                     item
                 }
             }
             currentState.copy(settingItems = newItems)
         }
-    }
-
-    fun onVolumeChanged(type: Int, volume:Int){
-        val volumeType =   when(type){
-            0 -> LyCmdConstant.AudioVolumeType.SYSTEM
-            1 -> LyCmdConstant.AudioVolumeType.MEDIA
-            else -> LyCmdConstant.AudioVolumeType.CALL
-        }
-        GlassesManage.setVolume(volumeType,volume)
     }
 
     fun <T> onSettingSelected(settingId: String, selectedValue: T) {
@@ -148,17 +138,6 @@ class SettingViewModel @Inject constructor(
                     }
                 }
 
-                "wear_detection" -> {
-                    if (selectedValue is LyCmdConstant.WearDetectionState) {
-                        GlassesManage.setWearDetection(selectedValue)
-                    }
-                }
-
-                "voice_command" -> {
-                    if (selectedValue is Boolean) {
-                        setVoiceWakeUp(selectedValue)
-                    }
-                }
             }
         }
 
@@ -174,25 +153,27 @@ class SettingViewModel @Inject constructor(
         }
     }
 
-    fun setVoiceWakeUp(enable: Boolean){
-        GlassesManage.setVoiceWakeUp(enable = enable)
-
-        _uiState.update { currentState ->
-            val updatedItems = currentState.settingItems.map { item ->
-                if (item is SettingItem.SwitchItem && item.id == "voice_command") {
-                    item.copy(isChecked = enable)
-                } else {
-                    item
+    fun setWearDetectionEnabled(enabled: Boolean) {
+        GlassesManage.setWearDetection(
+            if (enabled) LyCmdConstant.WearDetectionState.ON else LyCmdConstant.WearDetectionState.OFF
+        )
+        _uiState.update { state ->
+            state.copy(
+                settingItems = state.settingItems.map { item ->
+                    if (item is SettingItem.SwitchItem && item.id == "wear_detection") {
+                        item.copy(isChecked = enabled)
+                    } else {
+                        item
+                    }
                 }
-            }
-            currentState.copy(settingItems = updatedItems)
+            )
         }
     }
 
     /** 开关为「启用」：开启 = 设备可使用本地离线语音指令 */
     fun setLocalOfflineVoiceEnabled(enabled: Boolean) {
         localOfflineVoiceEnabled = enabled
-        GlassesManage.setVoiceCommandDisableState(
+        GlassesManage.setVoiceWakeUp(
             localOfflineEnabled = localOfflineVoiceEnabled,
             opusPushEnabled = opusStreamPushEnabled
         )
@@ -205,7 +186,7 @@ class SettingViewModel @Inject constructor(
     /** 开关为「启用」：开启 = 允许 AI 唤醒与 Opus 音频推送 */
     fun setOpusStreamPushEnabled(enabled: Boolean) {
         opusStreamPushEnabled = enabled
-        GlassesManage.setVoiceCommandDisableState(
+        GlassesManage.setVoiceWakeUp(
             localOfflineEnabled = localOfflineVoiceEnabled,
             opusPushEnabled = opusStreamPushEnabled
         )
@@ -238,9 +219,9 @@ class SettingViewModel @Inject constructor(
         val versionInfo = latestDeviceVersionInfo ?: return stripVersionInfoItems(items)
         val baseItems = stripVersionInfoItems(items)
         val versionItems = listOf(
-            SettingItem.InfoItem("固件版本", versionInfo.firmwareVersion),
-            SettingItem.InfoItem("Wifi版本", versionInfo.wifiVersion),
-            SettingItem.InfoItem("硬件版本", versionInfo.hardwareVersion)
+            SettingItem.InfoItem(context.getString(R.string.firmware_version), versionInfo.firmwareVersion),
+            SettingItem.InfoItem(context.getString(R.string.wifi_version), versionInfo.wifiVersion),
+            SettingItem.InfoItem(context.getString(R.string.hardware_version), versionInfo.hardwareVersion)
         )
 
         return buildList {
@@ -271,147 +252,98 @@ class SettingViewModel @Inject constructor(
         }
     }
 
-    private fun addVolumeSetting(systemVolume:Int ,mediaVolume:Int,callVolume:Int){
-        val items = mutableListOf<SettingItem>()
-        items.add(
-            SettingItem.ActionItem(
-                id = "volume_system",
-                title = "系统音量",
-                summary = "$systemVolume",
-            )
-        )
-
-        items.add(
-            SettingItem.ActionItem(
-                id = "volume_media",
-                title = "媒体音量",
-                summary = "$mediaVolume"
-            )
-        )
-
-        items.add(
-            SettingItem.ActionItem(
-                id = "volume_call",
-                title = "通话音量",
-                summary = "$callVolume"
-            )
-        )
-
-
-        _uiState.update { state ->
-            val currentItems = state.settingItems.toMutableList()
-            currentItems.removeIf { it is SettingItem.ActionItem && it.id.startsWith("volume_")}
-            val rebootItem = currentItems.filterIsInstance<SettingItem.ActionItem>()
-                    .first { it.id == "reboot_device" }
-
-            val targetIndex = currentItems.indexOf(rebootItem)
-            currentItems.addAll(targetIndex,items)
-            state.copy(settingItems = currentItems)
-        }
-
-
-    }
-
     private fun mapDtoToUiState(dto: DeviceSettingsStateDTO): SettingUiState {
         val items = mutableListOf<SettingItem>()
 
         items.add(
             SettingItem.DropdownItem(
-                id = "led_brightness",
-                title = "LED 亮度",
-                selectedOption = SettingMapper.toLedBrightnessOptions()
-                                         .find { it.value == dto.ledBrightness } ?: SettingMapper.toLedBrightnessOptions()
-                                         .first(),
-                options = SettingMapper.toLedBrightnessOptions()
-            ))
+            id = "led_brightness",
+            title = context.getString(R.string.led_brightness),
+            selectedOption = SettingMapper.toLedBrightnessOptions(context)
+                .find { it.value == dto.ledBrightness } ?: SettingMapper.toLedBrightnessOptions(context)
+                .first(),
+            options = SettingMapper.toLedBrightnessOptions(context)
+        ))
 
         items.add(
             SettingItem.ActionItem(
                 id = "record_duration",
-                title = "录像时长",
-                summary = "${dto.recordDuration ?: "未设置"} 秒"
+                title = context.getString(R.string.video_recording),
+                summary = context.getString(
+                    R.string.duration_value_seconds,
+                    dto.recordDuration?.toString() ?: context.getString(R.string.not_set)
+                )
             )
         )
 
         items.add(
-            SettingItem.DropdownItem(
-                id = "wear_detection",
-                title = "佩戴检测",
-                selectedOption = SettingMapper.toWearDetectionOptions()
-                                         .find { it.value == dto.wearDetectionEnabled }
-                                 ?: SettingMapper.toWearDetectionOptions().first(),
-                options = SettingMapper.toWearDetectionOptions()
-            ))
-
-        items.add(
             SettingItem.SwitchItem(
-                id = "voice_command",
-                title = "语音指令",
-                isChecked = dto.voiceCommandEnabled ?: true,
-                summary = "开启后可使用语音控制"
+                id = "wear_detection",
+                title = context.getString(R.string.wear_detection),
+                isChecked = dto.wearDetectionEnabled != LyCmdConstant.WearDetectionState.OFF
             )
         )
 
         items.add(
             SettingItem.SwitchItem(
                 id = "voice_disable_local",
-                title = "本地离线语音指令",
+                title = context.getString(R.string.local_offline_voice_command),
                 isChecked = localOfflineVoiceEnabled,
-                summary = "关闭后禁用设备端离线语音控制（协议 bit0）"
+                summary = context.getString(R.string.local_offline_voice_command_summary)
             )
         )
         items.add(
             SettingItem.SwitchItem(
                 id = "voice_disable_opus",
-                title = "AI 唤醒（Opus 推送）",
+                title = context.getString(R.string.ai_wakeup_opus_push),
                 isChecked = opusStreamPushEnabled,
-                summary = "关闭后禁用 AI 唤醒与 Opus 音频推流（协议 bit1）"
+                summary = context.getString(R.string.ai_wakeup_opus_push_summary)
             )
         )
 
-        val gestureActionOptions = SettingMapper.toGestureActionOptions()
+        val gestureActionOptions = SettingMapper.toGestureActionOptions(context)
         LyCmdConstant.GestureType.entries.forEach { gestureType ->
             val currentAction = dto.gestureSettings?.get(gestureType)
             items.add(
                 SettingItem.DropdownItem(
                     id = "gesture_${gestureType.name}",
-                    title = SettingMapper.toGestureTypeTitle(gestureType),
-                    selectedOption = gestureActionOptions.find { it.value == currentAction }
-                                     ?: gestureActionOptions.first(),
-                    options = gestureActionOptions
-                ))
+                title = SettingMapper.toGestureTypeTitle(context, gestureType),
+                selectedOption = gestureActionOptions.find { it.value == currentAction }
+                    ?: gestureActionOptions.first(),
+                options = gestureActionOptions
+            ))
         }
 
         items.add(
             SettingItem.ActionItem(
                 id = "burst_photo_count",
-                title = "连拍张数",
-                summary = dto.burstPhotoCount?.toString() ?: "未设置"
+                title = context.getString(R.string.burst_photo_count),
+                summary = dto.burstPhotoCount?.toString() ?: context.getString(R.string.not_set)
             )
         )
 
         items.add(
             SettingItem.DropdownItem(
                 id = "screen_orientation",
-                title = "屏幕方向",
-                selectedOption = SettingMapper.toScreenOrientationOptions()
-                                         .find { it.value == dto.orientation } ?: SettingMapper.toScreenOrientationOptions()
-                                         .first(),
-                options = SettingMapper.toScreenOrientationOptions()
-            ))
+            title = context.getString(R.string.screen_orientation),
+            selectedOption = SettingMapper.toScreenOrientationOptions(context)
+                .find { it.value == dto.orientation } ?: SettingMapper.toScreenOrientationOptions(context)
+                .first(),
+            options = SettingMapper.toScreenOrientationOptions(context)
+        ))
 
         items.add(
             SettingItem.ActionItem(
                 id = "reboot_device",
-                title = "重启设备",
-                summary = "重启动力眼镜"
+                title = context.getString(R.string.reboot_device),
+                summary = context.getString(R.string.reboot_device_summary)
             )
         )
         items.add(
             SettingItem.ActionItem(
                 id = "restore_factory",
-                title = "恢复出厂设置",
-                summary = "清除所有用户数据并重启"
+                title = context.getString(R.string.restore_factory),
+                summary = context.getString(R.string.restore_factory_summary)
             )
         )
 
@@ -436,18 +368,18 @@ class SettingViewModel @Inject constructor(
 
     private fun SettingUiState.getLatestGestureSettingsMap(): Map<LyCmdConstant.GestureType, LyCmdConstant.GestureAction> {
         return this.settingItems
-                .filterIsInstance<SettingItem.DropdownItem<*>>()
-                .filter { it.id.startsWith("gesture_") }
-                .mapNotNull { item ->
-                    try {
-                        val typeName = item.id.removePrefix("gesture_")
-                        val gestureType = LyCmdConstant.GestureType.valueOf(typeName)
-                        val gestureAction = item.selectedOption.value as LyCmdConstant.GestureAction
-                        gestureType to gestureAction
-                    } catch (e: Exception) {
-                        null
-                    }
-                }.toMap()
+            .filterIsInstance<SettingItem.DropdownItem<*>>()
+            .filter { it.id.startsWith("gesture_") }
+            .mapNotNull { item ->
+                try {
+                    val typeName = item.id.removePrefix("gesture_")
+                    val gestureType = LyCmdConstant.GestureType.valueOf(typeName)
+                    val gestureAction = item.selectedOption.value as LyCmdConstant.GestureAction
+                    gestureType to gestureAction
+                } catch (e: Exception) {
+                    null
+                }
+            }.toMap()
     }
 
     private fun <T> SettingItem.DropdownItem<T>.withNewSelection(value: Any?): SettingItem.DropdownItem<T> {
@@ -455,26 +387,27 @@ class SettingViewModel @Inject constructor(
         return if (newSelectedOption != null) this.copy(selectedOption = newSelectedOption) else this
     }
 
-    fun onDisconnect() {
-        viewModelScope.launch {
-            val currentStateValue = bluetoothDataManager.getBluetoothState()
-            val connectionState = ConnectionState.fromValue(currentStateValue)
+     fun onDisconnect() {
+         viewModelScope.launch {
+             val currentStateValue = bluetoothDataManager.getBluetoothState()
+             val connectionState = ConnectionState.fromValue(currentStateValue)
 
-            _uiState.update { it.copy(isUnbinding = true) }
+             _uiState.update { it.copy(isUnbinding = true) }
 
 //             if (connectionState == ConnectionState.CONNECTED) {
-            GlassesManage.disConnect()
-            delay(1000)
+                 GlassesManage.disConnect()
+                 AiAssistantClient.getInstance().disconnect()
+                 delay(1000)
 //             }
 
-            bluetoothDataManager.clearBluetoothDevice()
-
-            _uiState.update {
-                it.copy(
-                    isUnbinding = false,
-                    disconnectAction = it.disconnectAction.copy(isEnabled = false)
-                )
-            }
-        }
+             bluetoothDataManager.clearBluetoothDevice()
+             
+             _uiState.update {
+                 it.copy(
+                     isUnbinding = false,
+                     disconnectAction = it.disconnectAction.copy(isEnabled = false)
+                 )
+             }
+         }
     }
 }

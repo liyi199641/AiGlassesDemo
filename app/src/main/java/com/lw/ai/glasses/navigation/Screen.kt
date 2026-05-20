@@ -2,6 +2,7 @@
 sealed class Screen(val route: String) {
     object Home : Screen("home")
     object Image : Screen("sync_photos")
+    object DeviceControl : Screen("device_control")
     object Assistant : Screen("assistant")
     object Setting : Screen("glasses_settings")
     object Update : Screen("ota_update")

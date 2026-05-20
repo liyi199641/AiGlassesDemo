@@ -4,6 +4,9 @@ import android.app.Application
 import android.os.Environment
 import com.blankj.utilcode.util.LogUtils
 import com.blankj.utilcode.util.Utils
+import com.bytedance.sdk.open.douyin.DouYinOpenApiFactory
+import com.bytedance.sdk.open.douyin.DouYinOpenConfig
+import com.fission.wear.glasses.sdk.AiAssistantClient
 import com.fission.wear.glasses.sdk.GlassesManage
 import com.fission.wear.glasses.sdk.constant.GlassesConstant
 import com.lw.top.lib_core.data.datastore.AppDataManager
@@ -27,8 +30,7 @@ class LinWearApplication : Application(){
 
         Utils.init(this)
 
-        val logDirPath = externalCacheDir?.absolutePath
-            ?: cacheDir.absolutePath
+        val logDirPath = filesDir.absolutePath
 
         LogUtils.getConfig().apply {
             setConsoleSwitch(true)
@@ -36,8 +38,10 @@ class LinWearApplication : Application(){
             setDir(logDirPath)
             setSaveDays(7)
             setFilePrefix("AiGlass")
-            setDir(Environment.getExternalStorageDirectory())
         }
+
+        val clientkey = "xxx" // 需要到开发者网站申请并替换
+        DouYinOpenApiFactory.init(DouYinOpenConfig(clientkey))
 
         setupRxJavaErrorHandler()
         initSavedEnvironment()
@@ -45,11 +49,12 @@ class LinWearApplication : Application(){
 
     private fun initSavedEnvironment() {
         MainScope().launch {
+            val savedLocalWsUrl = appDataManager.getLocalEnvironmentWsUrl()
             val savedEnvName = appDataManager.getEnvironment()
             savedEnvName?.let { name ->
                 try {
                     val env = GlassesConstant.ServerEnvironment.valueOf(name)
-                    GlassesManage.updateEnvironment(env)
+                    AiAssistantClient.applyServerEnvironmentToGlobals(env, savedLocalWsUrl)
                 } catch (e: Exception) {
                     e.printStackTrace()
                 }

@@ -13,8 +13,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.lw.ai.glasses.ui.base.data.AppItemData
 import com.lw.ai.glasses.ui.base.data.AppItemType
+import com.lw.ai.glasses.ui.theme.TextPrimary
+import com.lw.ai.glasses.ui.theme.TextRed
+import com.lw.ai.glasses.ui.theme.TextSecondary
 import com.lw.ai.glasses.ui.theme.components.AppAsyncImage
 import com.lw.ai.glasses.ui.theme.components.AppIcon
+import com.lw.ai.glasses.ui.theme.components.AppText
 
 @Composable
 fun BaseItemScreen(itemData: AppItemData, onItemClick: (AppItemType) -> Unit) {

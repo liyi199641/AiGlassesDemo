@@ -1,5 +1,6 @@
 package com.lw.ai.glasses.ui.live
 
+import android.view.WindowManager
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -42,7 +43,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -52,6 +53,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -59,6 +61,8 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.fission.wear.glasses.sdk.constant.GlassesConstant
+import com.lw.ai.glasses.R
 import com.lw.top.lib_core.utils.findActivity
 import org.videolan.libvlc.MediaPlayer
 import org.videolan.libvlc.util.VLCVideoLayout
@@ -72,11 +76,19 @@ fun LiveScreen(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val vlcPlayer = viewModel.vlcPlayer
     val context = LocalContext.current
+    val activity = remember(context) { context.findActivity() }
+    val canSwitchTab = !uiState.isConnecting &&
+            !uiState.isPlayingLocal &&
+            !uiState.isDeviceStreaming &&
+            !uiState.isPushingToDouyin
 
-    LaunchedEffect(Unit) {
-        val activity = context.findActivity()
-        if (activity != null) {
-            viewModel.initDySdk(activity)
+    DisposableEffect(activity) {
+        activity?.window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        activity?.let {
+            viewModel.initDouyinSdk(activity)
+        }
+        onDispose {
+            activity?.window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         }
     }
 
@@ -84,12 +96,12 @@ fun LiveScreen(
         topBar = {
             Column {
                 TopAppBar(
-                    title = { Text("智能眼镜直播") },
+                    title = { Text(stringResource(R.string.live_title)) },
                     navigationIcon = {
                         IconButton(onClick = onNavigateBack) {
                             Icon(
                                 imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                                contentDescription = "返回"
+                                contentDescription = stringResource(R.string.back)
                             )
                         }
                     },
@@ -102,14 +114,14 @@ fun LiveScreen(
                     Tab(
                         selected = uiState.currentFunction == AppFunctionMode.LOCAL_PLAYER,
                         onClick = { viewModel.switchFunction(AppFunctionMode.LOCAL_PLAYER) },
-                        text = { Text("本地预览") },
-                        enabled = !uiState.isConnecting
+                        text = { Text(stringResource(R.string.local_preview)) },
+                        enabled = canSwitchTab
                     )
                     Tab(
                         selected = uiState.currentFunction == AppFunctionMode.DOUYIN_PUSHER,
                         onClick = { viewModel.switchFunction(AppFunctionMode.DOUYIN_PUSHER) },
-                        text = { Text("抖音推流") },
-                        enabled = !uiState.isConnecting
+                        text = { Text(stringResource(R.string.douyin_push)) },
+                        enabled = canSwitchTab
                     )
                 }
             }
@@ -126,19 +138,21 @@ fun LiveScreen(
                     LocalPlayerContent(
                         uiState = uiState,
                         vlcPlayer = vlcPlayer,
-                        onStart = viewModel::startLiveStreaming,
-                        onStop = viewModel::stopLiveStreaming,
+                        onStart = viewModel::startStreaming,
+                        onStop = viewModel::stopStreaming,
                         onFpsChange = viewModel::updateFps,
                         onResolutionChange = viewModel::updateResolution,
-                        onBitrateChange =viewModel::updateBitrateChange
+                        onBitrateChange = viewModel::updateBitrateChange,
+                        onLiveChannelChange = viewModel::updateLiveChannel
                     )
                 }
 
                 AppFunctionMode.DOUYIN_PUSHER -> {
                     DouyinPusherContent(
                         uiState = uiState,
-                        onStart = { },
-                        onStop = { },
+                        onAuth = viewModel::douyinAuth,
+                        onStart = { activity?.let(viewModel::startLiveStreaming) },
+                        onStop = viewModel::closeBroadcast,
                     )
                 }
             }
@@ -156,10 +170,13 @@ fun LocalPlayerContent(
     onStop: () -> Unit,
     onFpsChange: (Int) -> Unit,
     onResolutionChange: (String) -> Unit,
-    onBitrateChange: (Int) -> Unit // <--- 新增回调：码率变化
+    onBitrateChange: (Int) -> Unit, // <--- 新增回调：码率变化
+    onLiveChannelChange: (GlassesConstant.LiveChannel) -> Unit
 ) {
-    val resolutions = listOf("480x640", "720x1080", "1080x1920")
+    val resolutions = listOf("1280x720", "960x720","720x960","720*480","480*720")
+    val liveChannels = GlassesConstant.LiveChannel.entries
     var isResolutionExpanded by remember { mutableStateOf(false) }
+    var isLiveChannelExpanded by remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
@@ -178,16 +195,17 @@ fun LocalPlayerContent(
                 .clip(RoundedCornerShape(16.dp))
                 .background(Color.Black)
         ) {
-            if (vlcPlayer != null) {
+            if (vlcPlayer != null && uiState.isPlayingLocal) {
                 AndroidView(
                     factory = { ctx ->
                         VLCVideoLayout(ctx).apply {
+                            runCatching { vlcPlayer.detachViews() }
                             vlcPlayer.attachViews(this, null, false, false)
                         }
                     },
                     modifier = Modifier.fillMaxSize(),
                     onRelease = {
-                        vlcPlayer.detachViews()
+                        runCatching { vlcPlayer.detachViews() }
                     }
                 )
             }
@@ -208,7 +226,7 @@ fun LocalPlayerContent(
                             modifier = Modifier.size(48.dp)
                         )
                         Spacer(Modifier.height(8.dp))
-                        Text("等待设备连接", color = Color.White)
+                        Text(stringResource(R.string.waiting_device_connection), color = Color.White)
                         if (uiState.isConnecting) {
                             Spacer(Modifier.height(16.dp))
                             CircularProgressIndicator(color = Color.White)
@@ -230,7 +248,7 @@ fun LocalPlayerContent(
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
                 Text(
-                    "参数配置",
+                    stringResource(R.string.parameter_config),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.primary
@@ -251,7 +269,7 @@ fun LocalPlayerContent(
                                 onFpsChange(intValue)
                             }
                         },
-                        label = { Text("帧率 (FPS)") },
+                        label = { Text(stringResource(R.string.fps_label)) },
                         modifier = Modifier.weight(1f),
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         singleLine = true,
@@ -270,7 +288,7 @@ fun LocalPlayerContent(
                             value = uiState.targetResolution,
                             onValueChange = {},
                             readOnly = true,
-                            label = { Text("分辨率") },
+                            label = { Text(stringResource(R.string.resolution)) },
                             trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = isResolutionExpanded) },
                             modifier = Modifier.menuAnchor(),
                             enabled = !uiState.isPlayingLocal
@@ -303,14 +321,53 @@ fun LocalPlayerContent(
                             onBitrateChange(intValue)
                         }
                     },
-                    label = { Text("码率 (Bitrate)") },
-                    placeholder = { Text("默认: 1000000") },
+                    label = { Text(stringResource(R.string.bitrate_label)) },
+                    placeholder = { Text(stringResource(R.string.bitrate_default_hint)) },
                     modifier = Modifier.fillMaxWidth(),
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     singleLine = true,
                     enabled = !uiState.isPlayingLocal,
-                    supportingText = { Text("建议值: 1000000 ~ 5000000") } // 友好的提示文本
+                    supportingText = { Text(stringResource(R.string.bitrate_suggested)) } // 友好的提示文本
                 )
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                ExposedDropdownMenuBox(
+                    expanded = isLiveChannelExpanded && !uiState.isPlayingLocal,
+                    onExpandedChange = {
+                        if (!uiState.isPlayingLocal) {
+                            isLiveChannelExpanded = !isLiveChannelExpanded
+                        }
+                    }
+                ) {
+                    OutlinedTextField(
+                        value = uiState.liveChannel.displayName(),
+                        onValueChange = {},
+                        readOnly = true,
+                        label = { Text(stringResource(R.string.live_channel_label)) },
+                        trailingIcon = {
+                            ExposedDropdownMenuDefaults.TrailingIcon(expanded = isLiveChannelExpanded)
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .menuAnchor(),
+                        enabled = !uiState.isPlayingLocal
+                    )
+                    ExposedDropdownMenu(
+                        expanded = isLiveChannelExpanded,
+                        onDismissRequest = { isLiveChannelExpanded = false }
+                    ) {
+                        liveChannels.forEach { channel ->
+                            DropdownMenuItem(
+                                text = { Text(channel.displayName()) },
+                                onClick = {
+                                    onLiveChannelChange(channel)
+                                    isLiveChannelExpanded = false
+                                }
+                            )
+                        }
+                    }
+                }
             }
         }
 
@@ -339,10 +396,14 @@ fun LocalPlayerContent(
                     strokeWidth = 2.dp
                 )
                 Spacer(Modifier.width(12.dp))
-                Text("正在建立连接...")
+                Text(stringResource(R.string.establishing_connection))
             } else {
                 Text(
-                    text = if (isRunning) "断开设备" else "连接眼镜并预览",
+                    text = if (isRunning) {
+                        stringResource(R.string.disconnect_device)
+                    } else {
+                        stringResource(R.string.connect_glasses_preview)
+                    },
                     fontSize = 16.sp,
                     fontWeight = FontWeight.Bold
                 )
@@ -353,14 +414,25 @@ fun LocalPlayerContent(
         Spacer(modifier = Modifier.height(32.dp))
     }
 }
+
+private fun GlassesConstant.LiveChannel.displayName(): String {
+    return when (this) {
+        GlassesConstant.LiveChannel.WIFI_AP -> "WIFI_AP"
+        GlassesConstant.LiveChannel.WIFI_STATION -> "WIFI_STATION"
+        GlassesConstant.LiveChannel.BT -> "BT"
+    }
+}
+
 @Composable
 private fun DouyinPusherContent(
     uiState: LiveUiState,
+    onAuth: () -> Unit,
     onStart: () -> Unit,
     onStop: () -> Unit,
 ) {
     val isRunning = uiState.isPushingToDouyin
     val isConnecting = uiState.isConnecting
+    val isDeviceStreaming = uiState.isDeviceStreaming
 
     Column(
         modifier = Modifier
@@ -377,7 +449,7 @@ private fun DouyinPusherContent(
             Column(modifier = Modifier.padding(20.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
-                        text = "设备状态",
+                        text = stringResource(R.string.device_status),
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold
                     )
@@ -386,22 +458,22 @@ private fun DouyinPusherContent(
                         modifier = Modifier
                             .size(12.dp)
                             .background(
-                                color = if (true) Color.Green else Color.Gray,
+                                color = if (isDeviceStreaming) Color.Green else Color.Gray,
                                 shape = CircleShape
                             )
                     )
                     Spacer(Modifier.width(8.dp))
                     Text(
-                        text = if (true) "已连接" else "未连接",
+                        text = if (isDeviceStreaming) stringResource(R.string.streaming) else stringResource(R.string.not_streaming),
                         style = MaterialTheme.typography.bodyMedium
                     )
                 }
                 Spacer(Modifier.height(12.dp))
-                VerticalDivider()
+//                VerticalDivider()
                 Spacer(Modifier.height(12.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
-                        text = "推流状态",
+                        text = stringResource(R.string.pushing_status),
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold
                     )
@@ -416,7 +488,7 @@ private fun DouyinPusherContent(
                     )
                     Spacer(Modifier.width(8.dp))
                     Text(
-                        text = if (isRunning) "直播中" else "闲置",
+                        text = if (isRunning) stringResource(R.string.live_now) else stringResource(R.string.idle),
                         style = MaterialTheme.typography.bodyMedium
                     )
                 }
@@ -426,7 +498,7 @@ private fun DouyinPusherContent(
         Spacer(Modifier.height(24.dp))
 
         Text(
-            text = "参数配置",
+            text = stringResource(R.string.parameter_config),
             style = MaterialTheme.typography.labelLarge,
             color = MaterialTheme.colorScheme.primary,
             modifier = Modifier.padding(start = 4.dp, bottom = 8.dp)
@@ -437,6 +509,19 @@ private fun DouyinPusherContent(
         Spacer(Modifier.height(16.dp))
 
         Spacer(Modifier.weight(1f))
+
+        Button(
+            onClick = onAuth,
+            enabled = !isConnecting && !isRunning,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(48.dp),
+            shape = RoundedCornerShape(12.dp)
+        ) {
+            Text(stringResource(R.string.douyin_auth))
+        }
+
+        Spacer(Modifier.height(12.dp))
 
         Button(
             onClick = { if (isRunning) onStop() else onStart() },
@@ -456,10 +541,14 @@ private fun DouyinPusherContent(
                     strokeWidth = 2.dp
                 )
                 Spacer(Modifier.width(12.dp))
-                Text("正在初始化...")
+                Text(stringResource(R.string.initializing))
             } else {
                 Text(
-                    text = if (isRunning) "断开眼镜并停止推流" else "连接眼镜并开始推流",
+                    text = if (isRunning) {
+                        stringResource(R.string.disconnect_glasses_stop_push)
+                    } else {
+                        stringResource(R.string.connect_glasses_start_push)
+                    },
                     fontSize = 16.sp,
                     fontWeight = FontWeight.Bold
                 )

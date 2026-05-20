@@ -11,6 +11,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -47,6 +48,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -64,13 +66,17 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.fission.wear.glasses.sdk.constant.GlassesConstant
+import com.lw.ai.glasses.R
 import com.lw.ai.glasses.ui.base.screen.popup.CenteredFadeInPopup
+import com.lw.ai.glasses.utils.titleRes
 import com.polidea.rxandroidble3.scan.ScanResult
 import kotlinx.coroutines.launch
 
@@ -88,41 +94,91 @@ fun HomeScreen(
     val context = LocalContext.current
 
     if (showWsDebugDialog) {
+        var localWsInput by remember(uiState.localEnvironmentWsUrl) {
+            mutableStateOf(uiState.localEnvironmentWsUrl)
+        }
         AlertDialog(
             onDismissRequest = { showWsDebugDialog = false },
-            title = { Text("环境切换") },
+            title = { Text(stringResource(R.string.environment_switch)) },
             text = {
                 Column {
-                    Text("选择后全局生效 (已持久化存储)", style = MaterialTheme.typography.bodySmall)
+                    Text(stringResource(R.string.environment_switch_hint), style = MaterialTheme.typography.bodySmall)
                     Spacer(modifier = Modifier.height(12.dp))
                     LazyColumn(modifier = Modifier.fillMaxWidth()) {
                         items(GlassesConstant.ServerEnvironment.entries) { env ->
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable {
-                                        viewModel.updateEnvironment(env)
+                            val isLocalEnv = env == GlassesConstant.ServerEnvironment.LOCAL
+                            val applyEnvironment = {
+                                if (isLocalEnv) {
+                                    val trimmedWsUrl = localWsInput.trim()
+                                    viewModel.updateEnvironment(env, trimmedWsUrl)
+                                    if (
+                                        trimmedWsUrl.startsWith("ws://") ||
+                                        trimmedWsUrl.startsWith("wss://")
+                                    ) {
                                         showWsDebugDialog = false
                                     }
-                                    .padding(vertical = 8.dp)
-                            ) {
-                                RadioButton(
-                                    selected = env.wsUrl == GlassesConstant.AI_ASSISTANT_BASE_WS_URL,
-                                    onClick = {
-                                        viewModel.updateEnvironment(env)
-                                        showWsDebugDialog = false
-                                    }
-                                )
-                                Text(text = env.title, modifier = Modifier.padding(start = 8.dp))
+                                } else {
+                                    viewModel.updateEnvironment(env)
+                                    showWsDebugDialog = false
+                                }
+                            }
+                            Column(modifier = Modifier.fillMaxWidth()) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable { applyEnvironment() }
+                                        .padding(vertical = 8.dp)
+                                ) {
+                                    RadioButton(
+                                        selected = uiState.selectedEnvironment == env,
+                                        onClick = { applyEnvironment() }
+                                    )
+                                    Text(
+                                        text = stringResource(env.titleRes()),
+                                        modifier = Modifier.padding(start = 8.dp)
+                                    )
+                                }
+                                if (isLocalEnv) {
+                                    OutlinedTextField(
+                                        value = localWsInput,
+                                        onValueChange = { localWsInput = it },
+                                        label = { Text(stringResource(R.string.local_ws_address)) },
+                                        placeholder = { Text(stringResource(R.string.local_ws_url_placeholder)) },
+                                        singleLine = true,
+                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(start = 48.dp, bottom = 8.dp)
+                                    )
+                                }
                             }
                         }
                     }
                 }
             },
             confirmButton = {
+                TextButton(
+                    onClick = {
+                        val trimmedWsUrl = localWsInput.trim()
+                        viewModel.updateEnvironment(
+                            GlassesConstant.ServerEnvironment.LOCAL,
+                            trimmedWsUrl
+                        )
+                        if (
+                            trimmedWsUrl.startsWith("ws://") ||
+                            trimmedWsUrl.startsWith("wss://")
+                        ) {
+                            showWsDebugDialog = false
+                        }
+                    }
+                ) {
+                    Text(stringResource(R.string.save_local_environment))
+                }
+            },
+            dismissButton = {
                 TextButton(onClick = { showWsDebugDialog = false }) {
-                    Text("关闭")
+                    Text(stringResource(R.string.close))
                 }
             }
         )
@@ -150,9 +206,10 @@ fun HomeScreen(
         viewModel.onRecordAudioPermissionResult(isGranted)
     }
 
-    val multiplePermissionsLauncher = rememberLauncherForActivityResult(
+    val liveStreamingPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions()
-    ) {
+    ) { permissions ->
+        viewModel.onLiveStreamingPermissionResult(permissions)
     }
 
     LaunchedEffect(Unit) {
@@ -162,13 +219,13 @@ fun HomeScreen(
             }
         }
         launch {
-            viewModel.navigationEvent.collect { route ->
-                onNavigate(route)
+            viewModel.requestLiveStreamingPermissionEvent.collect { permissions ->
+                liveStreamingPermissionLauncher.launch(permissions.toTypedArray())
             }
         }
         launch {
-            viewModel.permissionEvent.collect { permissions ->
-                multiplePermissionsLauncher.launch(permissions.toTypedArray())
+            viewModel.navigationEvent.collect { route ->
+                onNavigate(route)
             }
         }
     }
@@ -177,10 +234,10 @@ fun HomeScreen(
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             TopAppBar(
-                title = { Text("首页") },
+                title = { Text(stringResource(R.string.home_title)) },
                 actions = {
                     IconButton(onClick = { showWsDebugDialog = true }) {
-                        Icon(Icons.Default.Settings, contentDescription = "环境设置")
+                        Icon(Icons.Default.Settings, contentDescription = stringResource(R.string.environment_settings))
                     }
                 }
             )
@@ -194,8 +251,13 @@ fun HomeScreen(
             DeviceStatusCard(
                 uiState = uiState,
                 onConnectClick = {
-                    showScanningDevices = !showScanningDevices
-                    viewModel.startScanDevice()
+                    if (showScanningDevices) {
+                        showScanningDevices = false
+                        viewModel.stopScanDevice()
+                    } else {
+                        showScanningDevices = true
+                        viewModel.startScanDevice()
+                    }
                 },
                 onReconnectClick ={
                     viewModel.connectDevice("","")
@@ -209,9 +271,32 @@ fun HomeScreen(
         }
     }
 
+    if (showScanningDevices) {
+        ScannedDevicesPopup(
+            viewModel = viewModel,
+            onDismiss = {
+                showScanningDevices = false
+                viewModel.stopScanDevice()
+            },
+            onDeviceSelected = { mac, name ->
+                showScanningDevices = false
+                viewModel.connectDevice(mac, name)
+            }
+        )
+    }
+}
+
+@Composable
+private fun ScannedDevicesPopup(
+    viewModel: HomeViewModel,
+    onDismiss: () -> Unit,
+    onDeviceSelected: (mac: String, name: String) -> Unit,
+) {
+    val scannedDevices by viewModel.scannedDevices.collectAsState()
+
     CenteredFadeInPopup(
-        visible = showScanningDevices,
-        onDismissRequest = { showScanningDevices = false },
+        visible = true,
+        onDismissRequest = onDismiss,
         modifier = Modifier.padding(horizontal = 40.dp)
     ) {
         Card(
@@ -224,36 +309,39 @@ fun HomeScreen(
         ) {
             Column(
                 modifier = Modifier
+                    .fillMaxSize()
                     .background(MaterialTheme.colorScheme.surface)
                     .padding(16.dp)
             ) {
                 Text(
-                    text = "扫描到的设备",
+                    text = stringResource(R.string.scanned_devices),
                     style = MaterialTheme.typography.titleMedium,
                     modifier = Modifier.padding(bottom = 12.dp)
                 )
 
-                if (uiState.scannedDevices.isEmpty()) {
+                if (scannedDevices.isEmpty()) {
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(120.dp),
+                            .weight(1f),
                         contentAlignment = Alignment.Center
                     ) {
-                        Text("未发现设备")
+                        Text(stringResource(R.string.no_devices_found))
                     }
                 } else {
-                    LazyColumn {
+                    LazyColumn(
+                        modifier = Modifier.weight(1f)
+                    ) {
                         items(
-                            items = uiState.scannedDevices,
-                            key = { result -> result.bleDevice.macAddress }) { result ->
+                            items = scannedDevices,
+                            key = { result -> result.bleDevice.macAddress }
+                        ) { result ->
                             ScannedDeviceItem(
                                 scanResult = result,
                                 onClick = {
-                                    showScanningDevices = false
-                                    viewModel.connectDevice(
+                                    onDeviceSelected(
                                         result.bleDevice.macAddress,
-                                        result.bleDevice.name.toString()
+                                        result.bleDevice.name.orEmpty()
                                     )
                                 }
                             )
@@ -271,6 +359,7 @@ fun ScannedDeviceItem(
     scanResult: ScanResult,
     onClick: () -> Unit
 ) {
+    val unknownDevice = stringResource(R.string.unknown_device)
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -295,7 +384,7 @@ fun ScannedDeviceItem(
             Spacer(modifier = Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = scanResult.bleDevice.name ?: "Unknown Device",
+                    text = scanResult.bleDevice.name ?: unknownDevice,
                     style = MaterialTheme.typography.bodyLarge,
                     fontWeight = FontWeight.Bold
                 )
@@ -320,6 +409,7 @@ fun DeviceStatusCard(
     onConnectClick: () -> Unit,
     onReconnectClick: () -> Unit,
 ) {
+    val unknownDevice = stringResource(R.string.unknown_device)
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -365,12 +455,12 @@ fun DeviceStatusCard(
                             Spacer(modifier = Modifier.width(8.dp))
                             Column {
                                 Text(
-                                    text = uiState.connectedDeviceName ?: "Unknown Device",
+                                    text = uiState.connectedDeviceName ?: unknownDevice,
                                     style = MaterialTheme.typography.titleMedium,
                                     fontWeight = FontWeight.Bold
                                 )
                                 Text(
-                                    text = "已连接",
+                                    text = stringResource(R.string.connected),
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -411,7 +501,7 @@ fun DeviceStatusCard(
                         )
                         Spacer(modifier = Modifier.width(12.dp))
                         Text(
-                            text = "正在连接设备...",
+                            text = stringResource(R.string.connecting_device),
                             style = MaterialTheme.typography.bodyLarge,
                             color = MaterialTheme.colorScheme.onPrimaryContainer
                         )
@@ -437,13 +527,13 @@ fun DeviceStatusCard(
                         Column {
                             // 依然显示之前的设备名称
                             Text(
-                                text = uiState.connectedDeviceName ?: "Unknown Device",
+                                text = uiState.connectedDeviceName ?: unknownDevice,
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.6f)
                             )
                             Text(
-                                text = "已断开连接 · 点击重连",
+                                text = stringResource(R.string.disconnected_tap_reconnect),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.error
                             )
@@ -463,12 +553,12 @@ fun DeviceStatusCard(
                         Spacer(modifier = Modifier.width(12.dp))
                         Column {
                             Text(
-                                text = "未连接设备",
+                                text = stringResource(R.string.device_not_connected),
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.Bold
                             )
                             Text(
-                                text = "点击扫描连接",
+                                text = stringResource(R.string.tap_scan_connect),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
                             )
@@ -506,6 +596,7 @@ fun FeatureItem(
     feature: Feature,
     onClick: () -> Unit
 ) {
+    val featureName = stringResource(feature.nameRes)
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -527,13 +618,13 @@ fun FeatureItem(
             ) {
                 Icon(
                     imageVector = feature.icon,
-                    contentDescription = feature.name,
+                    contentDescription = featureName,
                     modifier = Modifier.size(36.dp),
                     tint = MaterialTheme.colorScheme.primary
                 )
                 Spacer(modifier = Modifier.height(12.dp))
                 Text(
-                    text = feature.name,
+                    text = featureName,
                     fontSize = 15.sp,
                     fontWeight = FontWeight.Medium,
                     textAlign = TextAlign.Center,

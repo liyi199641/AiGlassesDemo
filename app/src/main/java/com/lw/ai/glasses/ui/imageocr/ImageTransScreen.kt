@@ -59,10 +59,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.fission.wear.glasses.sdk.GlassesManage
+import com.lw.ai.glasses.R
 import com.lw.ai.glasses.utils.getFileSize
 import com.lw.ai.glasses.utils.getImageDimensions
 import com.lw.ai.glasses.utils.uriToFile
@@ -86,6 +88,7 @@ fun ImageTranslateScreen(
     viewModel: ImageTranslateViewModel = hiltViewModel()
 ) {
     val context = LocalContext.current
+    val formatSeparator = stringResource(R.string.separator_comma)
     val coroutineScope = rememberCoroutineScope()
     val uiState by viewModel.uiState.collectAsState()
 
@@ -142,14 +145,14 @@ fun ImageTranslateScreen(
             TopAppBar(
                 title = {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.ImageSearch, contentDescription = "图片翻译", modifier = Modifier.size(20.dp))
+                        Icon(Icons.Default.ImageSearch, contentDescription = stringResource(R.string.image_translate_title), modifier = Modifier.size(20.dp))
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text("图片翻译")
+                        Text(stringResource(R.string.image_translate_title))
                     }
                 },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back))
                     }
                 }
             )
@@ -178,7 +181,7 @@ fun ImageTranslateScreen(
                 // 原文语言选择
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = "原文语言",
+                        text = stringResource(R.string.source_language),
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier
@@ -195,7 +198,7 @@ fun ImageTranslateScreen(
                             value = uiState.selectedSourceLang?.name ?: "",
                             onValueChange = {},
                             readOnly = true,
-                            placeholder = { Text(text = "选择原文语言") },
+                            placeholder = { Text(text = stringResource(R.string.choose_source_language)) },
                             trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = sourceExpanded) },
                             modifier = Modifier
                                     .menuAnchor()
@@ -224,7 +227,7 @@ fun ImageTranslateScreen(
                 // 译文语言选择
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = "译文语言",
+                        text = stringResource(R.string.target_language),
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier
@@ -241,7 +244,7 @@ fun ImageTranslateScreen(
                             value = uiState.selectedTargetLang?.name ?: "",
                             onValueChange = {},
                             readOnly = true,
-                            placeholder = { Text(text = "选择译文语言") },
+                            placeholder = { Text(text = stringResource(R.string.choose_target_language)) },
                             trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = targetExpanded) },
                             modifier = Modifier
                                     .menuAnchor()
@@ -275,9 +278,9 @@ fun ImageTranslateScreen(
                     onClick = { pickImageLauncher.launch("image/*") },
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Icon(Icons.Default.ImageSearch, contentDescription = "选择图片", modifier = Modifier.size(20.dp))
+                    Icon(Icons.Default.ImageSearch, contentDescription = stringResource(R.string.choose_image), modifier = Modifier.size(20.dp))
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("选择相册图片")
+                    Text(stringResource(R.string.choose_album_image))
                 }
 
                 // 图片要求说明
@@ -288,23 +291,30 @@ fun ImageTranslateScreen(
                     verticalArrangement = Arrangement.spacedBy(2.dp)
                 ) {
                     Text(
-                        text = "📌 图片要求：",
+                        text = stringResource(R.string.image_requirements),
                         style = MaterialTheme.typography.labelMedium,
                         fontWeight = FontWeight.Medium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Text(
-                        text = "• 支持格式：${ImageConstraints.SUPPORTED_FORMATS.joinToString("、")}",
+                        text = stringResource(
+                            R.string.image_supported_formats,
+                            ImageConstraints.SUPPORTED_FORMATS.joinToString(formatSeparator)
+                        ),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Text(
-                        text = "• 大小限制：≤ ${ImageConstraints.MAX_SIZE_MB}MB",
+                        text = stringResource(R.string.image_size_limit, ImageConstraints.MAX_SIZE_MB),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Text(
-                        text = "• 尺寸限制：≤ ${ImageConstraints.MAX_WIDTH}×${ImageConstraints.MAX_HEIGHT} 像素",
+                        text = stringResource(
+                            R.string.image_dimension_limit,
+                            ImageConstraints.MAX_WIDTH,
+                            ImageConstraints.MAX_HEIGHT
+                        ),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -345,7 +355,7 @@ fun ImageTranslateScreen(
                         uiState.translatedImageBitmap != null && showTranslatedImage -> {
                             Image(
                                 bitmap = uiState.translatedImageBitmap!!.asImageBitmap(),
-                                contentDescription = "翻译后的图片",
+                                contentDescription = stringResource(R.string.translated_image),
                                 modifier = Modifier.fillMaxSize()
                             )
                         }
@@ -354,7 +364,7 @@ fun ImageTranslateScreen(
                             val bitmap = BitmapFactory.decodeFile(uiState.originalImageFile!!.path)
                             Image(
                                 bitmap = bitmap.asImageBitmap(),
-                                contentDescription = "原始图片",
+                                contentDescription = stringResource(R.string.original_image),
                                 modifier = Modifier.fillMaxSize()
                             )
                         }
@@ -365,7 +375,7 @@ fun ImageTranslateScreen(
                                 contentAlignment = Alignment.Center
                             ) {
                                 Text(
-                                    text = "请选择符合要求的相册图片",
+                                    text = stringResource(R.string.choose_valid_album_image),
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -389,7 +399,11 @@ fun ImageTranslateScreen(
                         )
                     ) {
                         Text(
-                            text = if (showTranslatedImage) "显示原文图片" else "显示译文图片"
+                            text = if (showTranslatedImage) {
+                                stringResource(R.string.show_original_image)
+                            } else {
+                                stringResource(R.string.show_translated_image)
+                            }
                         )
                     }
                 }
@@ -417,12 +431,12 @@ fun ImageTranslateScreen(
                             strokeWidth = 2.dp
                         )
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text("翻译中...")
+                        Text(stringResource(R.string.translating))
                     }
                 } else {
-                    Icon(Icons.Default.ImageSearch, contentDescription = "开始翻译", modifier = Modifier.size(20.dp))
+                    Icon(Icons.Default.ImageSearch, contentDescription = stringResource(R.string.start_translate), modifier = Modifier.size(20.dp))
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("开始图片翻译")
+                    Text(stringResource(R.string.start_image_translate))
                 }
             }
         }
@@ -436,25 +450,34 @@ private fun checkImageConstraints(context: Context, uri: Uri): String {
         val mimeType = context.contentResolver.getType(uri)
         val fileExtension = mimeType?.split("/")?.last()?.lowercase()
         if (fileExtension !in ImageConstraints.SUPPORTED_FORMATS) {
-            return "图片格式不支持！仅支持${ImageConstraints.SUPPORTED_FORMATS.joinToString("、")}格式"
+            return context.getString(
+                R.string.image_unsupported_format,
+                ImageConstraints.SUPPORTED_FORMATS.joinToString(context.getString(R.string.separator_comma))
+            )
         }
 
         // 2. 校验图片大小
         val fileSize = getFileSize(context, uri)
         if (fileSize > ImageConstraints.MAX_SIZE_BYTES) {
             val sizeMB = String.format("%.2f", fileSize / (1024 * 1024).toDouble())
-            return "图片大小超过限制！当前${sizeMB}MB，最大支持${ImageConstraints.MAX_SIZE_MB}MB"
+            return context.getString(R.string.image_size_exceeded, sizeMB, ImageConstraints.MAX_SIZE_MB)
         }
 
         // 3. 校验图片尺寸
         val (width, height) = getImageDimensions(context, uri)
         if (width > ImageConstraints.MAX_WIDTH || height > ImageConstraints.MAX_HEIGHT) {
-            return "图片尺寸超过限制！当前${width}×${height}，最大支持${ImageConstraints.MAX_WIDTH}×${ImageConstraints.MAX_HEIGHT}"
+            return context.getString(
+                R.string.image_dimension_exceeded,
+                width,
+                height,
+                ImageConstraints.MAX_WIDTH,
+                ImageConstraints.MAX_HEIGHT
+            )
         }
 
         // 所有校验通过
         ""
     } catch (e: Exception) {
-        "图片信息解析失败：${e.message ?: "未知错误"}"
+        context.getString(R.string.image_parse_failed, e.message ?: context.getString(R.string.unknown_error))
     }
 }

@@ -1,3 +1,4 @@
+package com.lw.ai.glasses.ui.theme.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -22,6 +23,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.lw.ai.glasses.ui.theme.BtnDisabled
+import com.lw.ai.glasses.ui.theme.BtnNormal
+import com.lw.ai.glasses.ui.theme.BtnPressed
+import com.lw.ai.glasses.ui.theme.GradientColor
+import com.lw.ai.glasses.ui.theme.TextPrimary
 
 enum class ButtonType { Gradient, Normal, Custom }
 

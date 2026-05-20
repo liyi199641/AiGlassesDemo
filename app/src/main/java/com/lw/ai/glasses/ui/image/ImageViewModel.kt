@@ -1,14 +1,17 @@
 package com.lw.ai.glasses.ui.image
 
 import BaseViewModel
+import android.content.Context
 import androidx.lifecycle.viewModelScope
 import com.blankj.utilcode.util.ToastUtils
 import com.fission.wear.glasses.sdk.GlassesManage
 import com.fission.wear.glasses.sdk.constant.GlassesConstant
 import com.fission.wear.glasses.sdk.events.FileSyncEvent
+import com.lw.ai.glasses.R
 import com.lw.top.lib_core.data.local.entity.MediaFilesEntity
 import com.lw.top.lib_core.data.repository.PhotoRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import jakarta.inject.Inject
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -20,6 +23,7 @@ import kotlinx.coroutines.launch
 
 @HiltViewModel
 class ImageViewModel @Inject constructor(
+    @ApplicationContext private val context: Context,
     private val photoRepository: PhotoRepository
 ) : BaseViewModel() {
 
@@ -51,6 +55,7 @@ class ImageViewModel @Inject constructor(
 
     init {
         observeGlassesEvents()
+        GlassesManage.getDeviceSupportedFeatures()
     }
 
     fun onEvent(event: ImageUiEvent) {
@@ -69,7 +74,7 @@ class ImageViewModel @Inject constructor(
 
     fun syncAllMediaFile() {
         if (_syncState.value.isSyncing) {
-            ToastUtils.showLong("文件正在同步中")
+            ToastUtils.showLong(context.getString(R.string.file_syncing))
             return
         }
         _syncState.value = SyncState(isSyncing = true)
@@ -97,16 +102,18 @@ class ImageViewModel @Inject constructor(
                     }
 
                     is FileSyncEvent.DownloadSuccess -> {
-                        val newFileEntity = MediaFilesEntity(
-                            filePath = events.filePath,
-                            type = "IMAGE",
-                            createdAt = System.currentTimeMillis(),
-                            size = events.fileSizeInBytes,
-                        )
-                        photoRepository.insertPhoto(newFileEntity)
-                        val isLastFile = (events.curFileIndex + 1) == events.totalFileCount
-                        if (isLastFile) {
-                            _syncState.value = SyncState()
+                        if(events.filePath.isNotEmpty()){
+                            val newFileEntity = MediaFilesEntity(
+                                filePath = events.filePath,
+                                type = "IMAGE",
+                                createdAt = System.currentTimeMillis(),
+                                size = events.fileSizeInBytes,
+                            )
+                            photoRepository.insertPhoto(newFileEntity)
+                            val isLastFile = (events.curFileIndex + 1) == events.totalFileCount
+                            if (isLastFile) {
+                                _syncState.value = SyncState()
+                            }
                         }
                     }
 

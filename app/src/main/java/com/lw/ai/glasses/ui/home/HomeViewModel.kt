@@ -5,11 +5,14 @@ import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
+import android.util.Log
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewModelScope
 import com.blankj.utilcode.util.LogUtils
 import com.blankj.utilcode.util.ToastUtils
 import com.fission.wear.glasses.sdk.GlassesManage
+import com.fission.wear.glasses.sdk.config.AiAgentConfig
+import com.fission.wear.glasses.sdk.AiAssistantClient
 import com.fission.wear.glasses.sdk.config.BleComConfig
 import com.fission.wear.glasses.sdk.config.BleScanConfig
 import com.fission.wear.glasses.sdk.config.SdkConfig
@@ -18,18 +21,20 @@ import com.fission.wear.glasses.sdk.constant.GlassesConstant.ACTION_INDEX_MUSIC
 import com.fission.wear.glasses.sdk.constant.GlassesConstant.ACTION_INDEX_SINGLE_TOUCH
 import com.fission.wear.glasses.sdk.constant.GlassesConstant.ACTION_INDEX_WEAR
 import com.fission.wear.glasses.sdk.constant.GlassesConstant.ChannelType
-import com.fission.wear.glasses.sdk.events.AiAssistantEvent
-import com.fission.wear.glasses.sdk.events.AudioStateEvent
+import com.fission.wear.glasses.sdk.events.AgentEvent
 import com.fission.wear.glasses.sdk.events.CmdResultEvent
 import com.fission.wear.glasses.sdk.events.ConnectionStateEvent
 import com.fission.wear.glasses.sdk.events.ScanStateEvent
+import com.lw.ai.glasses.R
 import com.lw.ai.glasses.service.AiAssistantService
 import com.lw.top.lib_core.data.datastore.AppDataManager
 import com.lw.top.lib_core.data.datastore.BluetoothDataManager
 import com.polidea.rxandroidble3.exceptions.BleDisconnectedException
 import com.polidea.rxandroidble3.exceptions.BleGattException
 import com.polidea.rxandroidble3.scan.ScanFilter
+import com.polidea.rxandroidble3.scan.ScanResult
 import com.polidea.rxandroidble3.scan.ScanSettings
+import kotlin.math.abs
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -50,17 +55,22 @@ class HomeViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(HomeUiState())
     val uiState = _uiState.asStateFlow()
 
+    private val _scannedDevices = MutableStateFlow<List<ScanResult>>(emptyList())
+    val scannedDevices = _scannedDevices.asStateFlow()
+
     private val _permissionEvent = MutableSharedFlow<List<String>>(replay = 1)
     val permissionEvent = _permissionEvent.asSharedFlow()
 
     private val _requestAudioPermissionEvent = MutableSharedFlow<Unit>()
     val requestAudioPermissionEvent = _requestAudioPermissionEvent.asSharedFlow()
 
+    private val _requestLiveStreamingPermissionEvent = MutableSharedFlow<List<String>>()
+    val requestLiveStreamingPermissionEvent = _requestLiveStreamingPermissionEvent.asSharedFlow()
+
     private val _navigationEvent = MutableSharedFlow<String>()
     val navigationEvent = _navigationEvent.asSharedFlow()
 
-    private val useSdkAIServer: Boolean = true //使用sdkAI服务
-
+    private val mChannel = ChannelType.LY
     init {
         viewModelScope.launch {
             bluetoothDataManager.savedBluetoothState.collect { stateInt ->
@@ -102,12 +112,16 @@ class HomeViewModel @Inject constructor(
         checkAndRequestPermissions()
         observeGlassesEvents()
         updateFeatures()
+        initEnvironmentState()
     }
 
     fun onFeatureClick(feature: Feature) {
         when (feature.id) {
             "ai_translate" -> {
                 checkAudioPermissionAndNavigate(feature.route)
+            }
+            "live_streaming" -> {
+                checkLiveStreamingPermissionAndNavigate(feature.route)
             }
 
             else -> {
@@ -116,6 +130,50 @@ class HomeViewModel @Inject constructor(
                 }
             }
         }
+    }
+
+    private fun checkLiveStreamingPermissionAndNavigate(route: String) {
+        val permissionsNeeded = getLiveStreamingPermissions()
+        val permissionsToRequest = permissionsNeeded.filter { permission ->
+            ContextCompat.checkSelfPermission(context, permission) != PackageManager.PERMISSION_GRANTED
+        }
+
+        viewModelScope.launch {
+            if (permissionsToRequest.isEmpty()) {
+                _navigationEvent.emit(route)
+            } else {
+                _requestLiveStreamingPermissionEvent.emit(permissionsToRequest)
+            }
+        }
+    }
+
+    fun onLiveStreamingPermissionResult(permissions: Map<String, Boolean>) {
+        val allRequestedGranted = permissions.values.all { it }
+        val allPermissionsGranted = getLiveStreamingPermissions().all { permission ->
+            ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED
+        }
+
+        if (allRequestedGranted && allPermissionsGranted) {
+            viewModelScope.launch {
+                _navigationEvent.emit("live_streaming")
+            }
+        } else {
+            ToastUtils.showLong(context.getString(R.string.permission_live_required))
+        }
+    }
+
+    private fun getLiveStreamingPermissions(): List<String> {
+        val permissionsNeeded = ArrayList<String>()
+        permissionsNeeded.add(Manifest.permission.ACCESS_FINE_LOCATION)
+        permissionsNeeded.add(Manifest.permission.ACCESS_COARSE_LOCATION)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            permissionsNeeded.add(Manifest.permission.NEARBY_WIFI_DEVICES)
+        }
+        permissionsNeeded.add(Manifest.permission.ACCESS_WIFI_STATE)
+        permissionsNeeded.add(Manifest.permission.CHANGE_WIFI_STATE)
+        permissionsNeeded.add(Manifest.permission.INTERNET)
+        permissionsNeeded.add(Manifest.permission.ACCESS_NETWORK_STATE)
+        return permissionsNeeded
     }
 
     private fun checkAudioPermissionAndNavigate(route: String) {
@@ -141,7 +199,7 @@ class HomeViewModel @Inject constructor(
                 _navigationEvent.emit("ai_translate")
             }
         } else {
-            ToastUtils.showLong("需要录音权限才能使用翻译功能")
+            ToastUtils.showLong(context.getString(R.string.permission_audio_required))
         }
     }
 
@@ -156,7 +214,7 @@ class HomeViewModel @Inject constructor(
 
     fun onPermissionResult(isGranted: Boolean) {
         if (!isGranted) {
-            ToastUtils.showLong("部分权限被拒绝，功能可能受限")
+            ToastUtils.showLong(context.getString(R.string.permission_some_denied))
         }
     }
 
@@ -193,39 +251,21 @@ class HomeViewModel @Inject constructor(
 
     fun observeGlassesEvents() {
         viewModelScope.launch {
+            AiAssistantClient.getInstance().aiAgentEventFlow().collect { event->
+                when(event){
+                    is AgentEvent.ReconnectRequired -> {
+                        //上层业务自己判断 是否满足重连环境。网络 wifi 是否正常。
+//                       AiAssistantClient.getInstance().manualReconnect()
+                    }
+                    else -> {}
+                }
+            }
+        }
+        viewModelScope.launch {
             GlassesManage.eventFlow().collect { events ->
                 when (events) {
-                    is AudioStateEvent.StartRecording ->{
-                        //开始AI录音
-                    }
-                    is AudioStateEvent.ReceivingAudioData ->{
-                        //AI音频流
-                    }
-                    is AudioStateEvent.StopRecording ->{
-                        //结束AI录音
-                    }
-                    is AudioStateEvent.CancelRecording ->{
-                        //取消录音
-                    }
-
                     is ScanStateEvent.DeviceFound -> {
-                        _uiState.update { state ->
-                            state.copy(
-                                scannedDevices = state.scannedDevices
-                                        .plus(events.data)
-                                        .distinctBy { it.bleDevice.macAddress }
-                                        .sortedByDescending { it.rssi }
-                                        .filter {
-                                            val name = it.bleDevice.name ?: ""
-                                            name.contains("Glass", ignoreCase = true)
-                                            || name.contains("AG66", ignoreCase = true)
-                                            || name.contains("AG19", ignoreCase = true)
-                                            || name.contains("Tesee", ignoreCase = true)
-                                            || name.contains("AG188", ignoreCase = true)
-                                            || name.contains("Xinmo G1", ignoreCase = true)
-                                        }
-                            )
-                        }
+                        onDeviceFound(events.data)
                     }
 
                     is ScanStateEvent.ScanFinished -> {
@@ -268,14 +308,7 @@ class HomeViewModel @Inject constructor(
 
                         GlassesManage.getBatteryLevel()
                         GlassesManage.getMediaFileCount()
-                        GlassesManage.connectAiAssistant(
-                            bluetoothDataManager.getBluetoothAddress()!!,
-                            bluetoothDataManager.getBluetoothName()!!,
-                            "6600",
-                            "ukuSPzMnpLvLS2TTLL9S8PvUJzfTCHnu",
-                            "tz5dgRLm6tXS8gRr",
-                            GlassesConstant.AiModelVendor.DEFAULT
-                        )
+                        connectAiAssistant()
                         GlassesManage.getActionState()
 
                     }
@@ -337,10 +370,7 @@ class HomeViewModel @Inject constructor(
                         }
                     }
 
-                    is AiAssistantEvent.ReconnectRequired -> {
-                        //上层业务自己判断 是否满足重连环境。网络 wifi 是否正常。
-//                        GlassesManage.manualReconnect()
-                    }
+
 
                     else -> {}
                 }
@@ -348,22 +378,89 @@ class HomeViewModel @Inject constructor(
         }
     }
 
+    private suspend fun connectAiAssistant(){
+        if (!bluetoothDataManager.getBluetoothAddress().isNullOrEmpty()){
+            AiAssistantClient.getInstance().connectAiAssistant(
+                bluetoothDataManager.getBluetoothAddress()!!,
+//                            "4A:AB:03:D3:8F:F0",
+                bluetoothDataManager.getBluetoothName()!!,
+                "6600",
+                "ukuSPzMnpLvLS2TTLL9S8PvUJzfTCHnu",
+                "tz5dgRLm6tXS8gRr",
+            )
+        }
+    }
+
+    private fun initGlassesSdkAndAiClient() {
+        GlassesManage.initialize(SdkConfig(true,context, mChannel, LogUtils.V))
+        applyAiServerEnvironment(_uiState.value.selectedEnvironment)
+        AiAssistantClient.getInstance().initializeAiClient(
+            AiAgentConfig(
+                context = context,
+                channel = mChannel,
+                aiModelType = GlassesConstant.AiModelVendor.DEFAULT,
+                serverEnvironment = _uiState.value.selectedEnvironment,
+            ),
+        )
+    }
+
+    private fun applyAiServerEnvironment(
+        env: GlassesConstant.ServerEnvironment,
+        localWsUrlOverride: String? = null,
+    ) {
+        val localWsUrl = if (env == GlassesConstant.ServerEnvironment.LOCAL) {
+            localWsUrlOverride ?: _uiState.value.localEnvironmentWsUrl
+        } else {
+            null
+        }
+        AiAssistantClient.applyServerEnvironmentToGlobals(env, localWsUrl)
+    }
+
+    private fun isTargetGlassesDevice(name: String): Boolean {
+        return name.contains("Glass", ignoreCase = true)
+            || name.contains("AG66", ignoreCase = true)
+            || name.contains("AG19", ignoreCase = true)
+            || name.contains("Tesee", ignoreCase = true)
+            || name.contains("AG188", ignoreCase = true)
+            || name.contains("Xinmo G1", ignoreCase = true)
+    }
+
+    private fun onDeviceFound(result: ScanResult) {
+        val name = result.bleDevice.name ?: return
+        if (!isTargetGlassesDevice(name)) return
+
+        val mac = result.bleDevice.macAddress
+        val current = _scannedDevices.value
+        val existing = current.find { it.bleDevice.macAddress == mac }
+        if (existing != null && abs(existing.rssi - result.rssi) < 5) return
+
+        _scannedDevices.value = (current.filter { it.bleDevice.macAddress != mac } + result)
+            .sortedByDescending { it.rssi }
+    }
+
     fun startScanDevice() {
-        GlassesManage.initialize(SdkConfig(context, ChannelType.LY, LogUtils.V,useSdkAIServer) )
+        initGlassesSdkAndAiClient()
         if (_uiState.value.isScanning) return
+        _scannedDevices.value = emptyList()
+        _uiState.update { it.copy(isScanning = true) }
         GlassesManage.startScanBleDevices(
             bleScanConfig = BleScanConfig(isContinuousScan = false, scanDuration = 120000),
             scanSettings = ScanSettings.Builder()
-                    .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
-                    .setCallbackType(ScanSettings.CALLBACK_TYPE_ALL_MATCHES)
-                    .build(),
+                .setScanMode(ScanSettings.SCAN_MODE_BALANCED)
+                .setCallbackType(ScanSettings.CALLBACK_TYPE_FIRST_MATCH)
+                .build(),
             scanFilters = arrayOf(ScanFilter.Builder().build())
         )
     }
 
-    fun connectDevice(mac: String, name: String) {
-        GlassesManage.initialize(SdkConfig(context, ChannelType.LY, LogUtils.V,useSdkAIServer))
+    fun stopScanDevice() {
         GlassesManage.stopScanBleDevices(context)
+        _uiState.update { it.copy(isScanning = false) }
+    }
+
+    fun connectDevice(mac: String, name: String) {
+        initGlassesSdkAndAiClient()
+        stopScanDevice()
         if (mac.isEmpty()) {
             viewModelScope.launch {
                 if (!bluetoothDataManager.getBluetoothAddress().isNullOrEmpty()) {
@@ -390,10 +487,77 @@ class HomeViewModel @Inject constructor(
 
     }
 
-    fun updateEnvironment(env: GlassesConstant.ServerEnvironment) {
-        GlassesManage.updateEnvironment(env)
+    private fun initEnvironmentState() {
+        viewModelScope.launch {
+            val localWsUrl = appDataManager.getLocalEnvironmentWsUrl()
+                ?: GlassesConstant.ServerEnvironment.LOCAL.wsUrl
+            val savedEnv = appDataManager.getEnvironment()
+                ?.let { name ->
+                    runCatching { GlassesConstant.ServerEnvironment.valueOf(name) }.getOrNull()
+                }
+                ?: GlassesConstant.ServerEnvironment.entries.firstOrNull {
+                    it.wsUrl == GlassesConstant.AI_ASSISTANT_BASE_WS_URL
+                }
+                ?: GlassesConstant.ServerEnvironment.CHINA
+
+            _uiState.update {
+                it.copy(
+                    selectedEnvironment = savedEnv,
+                    localEnvironmentWsUrl = localWsUrl
+                )
+            }
+        }
+    }
+
+    fun updateEnvironment(env: GlassesConstant.ServerEnvironment, localWsUrl: String? = null) {
+        val normalizedLocalWsUrl = localWsUrl?.trim().orEmpty()
+        if (env == GlassesConstant.ServerEnvironment.LOCAL) {
+            if (normalizedLocalWsUrl.isBlank()) {
+                ToastUtils.showLong(context.getString(R.string.local_ws_empty))
+                return
+            }
+            if (!normalizedLocalWsUrl.startsWith("ws://") && !normalizedLocalWsUrl.startsWith("wss://")) {
+                ToastUtils.showLong(context.getString(R.string.local_ws_scheme_invalid))
+                return
+            }
+        }
+
+        val appliedLocalWsUrl = normalizedLocalWsUrl.ifBlank {
+            _uiState.value.localEnvironmentWsUrl
+        }
+        applyAiServerEnvironment(env, appliedLocalWsUrl)
+        AiAssistantClient.getInstance().initializeAiClient(
+            AiAgentConfig(
+                context = context,
+                channel = mChannel,
+                aiModelType = GlassesConstant.AiModelVendor.DEFAULT,
+                serverEnvironment = env,
+                enableDefaultPlaySimultaneousAudio = true,
+                enableDefaultPlayAgentAudio = true,
+                translationAudioStorageDirName = "transAudioFiles"
+            )
+
+        )
+
+        viewModelScope.launch {
+            connectAiAssistant()
+        }
+
+        _uiState.update {
+            it.copy(
+                selectedEnvironment = env,
+                localEnvironmentWsUrl = if (env == GlassesConstant.ServerEnvironment.LOCAL) {
+                    appliedLocalWsUrl
+                } else {
+                    it.localEnvironmentWsUrl
+                }
+            )
+        }
         viewModelScope.launch {
             appDataManager.saveEnvironment(env.name)
+            if (env == GlassesConstant.ServerEnvironment.LOCAL) {
+                appDataManager.saveLocalEnvironmentWsUrl(appliedLocalWsUrl)
+            }
         }
     }
 

@@ -4,9 +4,11 @@ import BaseViewModel
 import android.content.Context
 import androidx.lifecycle.viewModelScope
 import com.fission.wear.glasses.sdk.GlassesManage
+import com.fission.wear.glasses.sdk.AiAssistantClient
 import com.fission.wear.glasses.sdk.constant.GlassesConstant
 import com.fission.wear.glasses.sdk.events.AiTranslationEvent
 import com.fission.wear.glasses.sdk.events.AudioStateEvent
+import com.fission.wear.glasses.sdk.events.CmdResultEvent
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import com.lw.top.lib_core.data.local.entity.TranslationMessageEntity
@@ -15,10 +17,14 @@ import com.lw.top.lib_core.data.repository.TranslationRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.filterIsInstance
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import javax.inject.Inject
 import kotlin.math.log10
 import kotlin.math.sqrt
@@ -34,8 +40,12 @@ class TranslatorViewModel @Inject constructor(
     val uiState = _uiState.asStateFlow()
     private val streamRecorder = StreamAudioRecorder(context)
     private var mediaPlayer: android.media.MediaPlayer? = null
+    /** 进入翻译页前设备的本地离线语音启用状态，用于离开时仅恢复 Opus 推送开关。 */
+    private var localOfflineVoiceEnabled = true
 
     init {
+        disableOpusStreamPushForTranslation()
+
         loadLanguages()
 
         viewModelScope.launch {
@@ -48,10 +58,10 @@ class TranslatorViewModel @Inject constructor(
         }
 
         viewModelScope.launch {
-            GlassesManage.eventFlow().collect { events ->
+            AiAssistantClient.getInstance().aiAgentEventFlow().collect { events ->
                 when (events) {
                     AudioStateEvent.StartRecording         -> {//进入录音，对话模式
-                        GlassesManage.stopVadAudio()
+//                        GlassesManage.stopVadAudio()
                     }
                     is AiTranslationEvent.AiTranslationResult -> {
                         val result = events.data
@@ -98,6 +108,30 @@ class TranslatorViewModel @Inject constructor(
                 }
             }
         }
+    }
+
+    private fun disableOpusStreamPushForTranslation() {
+        viewModelScope.launch {
+            val voiceState = withTimeoutOrNull(3_000) {
+                GlassesManage.getVoiceWakeUp()
+                GlassesManage.eventFlow()
+                    .filterIsInstance<CmdResultEvent.VoiceCommandDisableState>()
+                    .first()
+            }
+            localOfflineVoiceEnabled =
+                voiceState?.let { !it.localOfflineVoiceDisabled } ?: localOfflineVoiceEnabled
+            GlassesManage.setVoiceWakeUp(
+                localOfflineEnabled = localOfflineVoiceEnabled,
+                opusPushEnabled = false,
+            )
+        }
+    }
+
+    private fun restoreOpusStreamPushAfterTranslation() {
+        GlassesManage.setVoiceWakeUp(
+            localOfflineEnabled = localOfflineVoiceEnabled,
+            opusPushEnabled = true,
+        )
     }
 
     private fun loadLanguages() {
@@ -152,10 +186,11 @@ class TranslatorViewModel @Inject constructor(
         viewModelScope.launch {
             val requestId = System.currentTimeMillis() // 发起一个新会话 ID
             
-            GlassesManage.startAiTranslation(
+            AiAssistantClient.getInstance().startAiTranslation(
                 uiState.value.srcLang?.langType!!,
                 listOf(uiState.value.targetLang?.langType!!),
-                requestId
+                requestId,
+                audioFormat = GlassesConstant.AI_TRANSLATION_AUDIO_FORMAT_RAW_PCM,
             )
 
             val modeStr = when (_uiState.value.currentMode) {
@@ -163,10 +198,11 @@ class TranslatorViewModel @Inject constructor(
                 TranslationMode.REAL_TIME -> GlassesConstant.AI_ASSISTANT_TYPE_LISTEN_MODE_SIMULTANEOUS_INTERPRETATION
             }
 
-            GlassesManage.startReceivingAudio(modeStr, 140)
+            delay(100)
+            AiAssistantClient.getInstance().startReceivingAudio(modeStr, 140)
             
             streamRecorder.start(fileName) { pcmData ->
-                GlassesManage.sendReceivingAudioData(modeStr, pcmData)
+                AiAssistantClient.getInstance().sendReceivingAudioData(modeStr, pcmData)
                 val amplitude = calculateRMS(pcmData)
                 _uiState.update { it.copy(currentAmplitude = amplitude) }
             }
@@ -182,7 +218,7 @@ class TranslatorViewModel @Inject constructor(
                 TranslationMode.DIALOGUE -> GlassesConstant.AI_ASSISTANT_TYPE_LISTEN_MODE_TRANSLATION
                 TranslationMode.REAL_TIME -> GlassesConstant.AI_ASSISTANT_TYPE_LISTEN_MODE_SIMULTANEOUS_INTERPRETATION
             }
-            GlassesManage.stopReceivingAudio(modeStr)
+            AiAssistantClient.getInstance().stopReceivingAudio(modeStr)
         }
     }
 
@@ -225,6 +261,7 @@ class TranslatorViewModel @Inject constructor(
     }
 
     override fun onCleared() {
+        restoreOpusStreamPushAfterTranslation()
         super.onCleared()
         viewModelScope.launch {
             streamRecorder.stop()

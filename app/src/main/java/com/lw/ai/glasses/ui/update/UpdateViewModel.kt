@@ -7,9 +7,11 @@ import androidx.lifecycle.viewModelScope
 import com.fission.wear.glasses.sdk.GlassesManage
 import com.fission.wear.glasses.sdk.constant.GlassesConstant
 import com.fission.wear.glasses.sdk.events.OTAEvent
+import com.lw.ai.glasses.R
 import com.lw.ai.glasses.utils.getFileNameFromUri
 import com.lw.top.lib_core.data.repository.UpdateRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
@@ -28,7 +30,8 @@ sealed class OtaState {
 
 @HiltViewModel
 class UpdateViewModel @Inject constructor(
-    private val updateRepository: UpdateRepository // 注入底层的Repository
+    @ApplicationContext private val context: Context,
+    private val updateRepository: UpdateRepository
 ) : BaseViewModel() {
 
     private val _uiState = MutableStateFlow(UpdateUiState())
@@ -39,6 +42,9 @@ class UpdateViewModel @Inject constructor(
     }
 
     init {
+        _uiState.update {
+            it.copy(statusText = context.getString(R.string.ota_status_choose_or_add))
+        }
         loadRecentFiles()
         observeOtaState()
     }
@@ -82,7 +88,7 @@ class UpdateViewModel @Inject constructor(
                         recentFiles = updatedList,
                         selectedFileId = newFile.id,
                         otaStatus = OtaStatus.READY_TO_UPGRADE,
-                        statusText = "文件已就绪: ${newFile.name}"
+                        statusText = context.getString(R.string.ota_file_ready, newFile.name)
                     )
                 }
             }
@@ -94,7 +100,10 @@ class UpdateViewModel @Inject constructor(
             currentState.copy(
                 selectedFileId = fileId,
                 otaStatus = OtaStatus.READY_TO_UPGRADE,
-                statusText = "文件已就绪: ${currentState.recentFiles.find { it.id == fileId }?.name ?: ""}"
+                statusText = context.getString(
+                    R.string.ota_file_ready,
+                    currentState.recentFiles.find { it.id == fileId }?.name.orEmpty()
+                )
             )
         }
     }
@@ -106,7 +115,7 @@ class UpdateViewModel @Inject constructor(
     fun startOtaUpgrade() {
         val currentState = _uiState.value
         val selectedId = currentState.selectedFileId ?: run {
-            _uiState.update { it.copy(statusText = "错误：请先选择一个固件文件") }
+            _uiState.update { it.copy(statusText = context.getString(R.string.ota_error_choose_file)) }
             return
         }
 
@@ -116,19 +125,19 @@ class UpdateViewModel @Inject constructor(
             val selectedType = currentState.selectedOtaType
 
             // 使用选中的文件路径和OTA类型来启动升级
-            GlassesManage.startOTA(fileToUpgrade.path, selectedType, "1.2.7")
+            GlassesManage.startOTA(fileToUpgrade.path, selectedType, "3.20.1.32")
 
             _uiState.update {
                 it.copy(
                     otaStatus = OtaStatus.UPGRADING,
-                    statusText = "准备升级: ${fileToUpgrade.name}"
+                    statusText = context.getString(R.string.ota_prepare_upgrade, fileToUpgrade.name)
                 )
             }
         } else {
             _uiState.update {
                 it.copy(
                     otaStatus = OtaStatus.FAILED,
-                    statusText = "错误：找不到选中的文件"
+                    statusText = context.getString(R.string.ota_error_file_not_found)
                 )
             }
         }
@@ -167,42 +176,48 @@ class UpdateViewModel @Inject constructor(
                     when (events) {
                         is OTAEvent.Start -> currentState.copy(
                             otaStatus = OtaStatus.UPGRADING,
-                            statusText = "升级开始...",
+                            statusText = context.getString(R.string.ota_started),
                             progress = 0
                         )
 
-                        is OTAEvent.Progress -> currentState.copy(
-                            otaStatus = OtaStatus.UPGRADING,
-                            statusText = "${if (events.type == GlassesConstant.OTAStage.VERIFY) "正在校验文件..." else "正在升级..."} ${events.percent}%",
-                            progress = events.percent
-                        )
+                        is OTAEvent.Progress -> {
+                            val stageText = if (events.type == GlassesConstant.OTAStage.VERIFY) {
+                                context.getString(R.string.ota_verifying)
+                            } else {
+                                context.getString(R.string.ota_upgrading)
+                            }
+                            currentState.copy(
+                                otaStatus = OtaStatus.UPGRADING,
+                                statusText = context.getString(R.string.ota_progress, stageText, events.percent),
+                                progress = events.percent
+                            )
+                        }
 
                         is OTAEvent.DeviceRebooting -> currentState.copy(
                             otaStatus = OtaStatus.UPGRADING,
-                            statusText = "固件传输完成，等待设备重启..."
+                            statusText = context.getString(R.string.ota_waiting_reboot)
                         )
 
                         is OTAEvent.Success -> currentState.copy(
                             otaStatus = OtaStatus.SUCCESS,
-                            statusText = "升级成功！",
+                            statusText = context.getString(R.string.ota_success),
                             progress = 100
                         )
 
-
                         is OTAEvent.Failed -> currentState.copy(
                             otaStatus = OtaStatus.FAILED,
-                            statusText = "升级失败: ${events.reason}"
+                            statusText = context.getString(R.string.ota_failed, events.reason)
                         )
 
                         is OTAEvent.Cancelled -> currentState.copy(
                             otaStatus = OtaStatus.IDLE,
-                            statusText = "升级已取消",
+                            statusText = context.getString(R.string.ota_cancelled),
                             progress = 0
                         )
 
                         is OTAEvent.Idle -> currentState.copy(
                             otaStatus = OtaStatus.IDLE,
-                            statusText = "空闲状态",
+                            statusText = context.getString(R.string.ota_idle),
                             progress = 0
                         )
 

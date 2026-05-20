@@ -1,3 +1,4 @@
+package com.lw.ai.glasses.ui.theme.components
 
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -8,6 +9,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.lw.ai.glasses.ui.theme.CardBackground
 
 @Composable
 fun AppCardScreen(

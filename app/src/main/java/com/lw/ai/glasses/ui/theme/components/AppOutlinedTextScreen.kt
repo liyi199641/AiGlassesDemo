@@ -1,3 +1,4 @@
+package com.lw.ai.glasses.ui.theme.components
 
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.text.KeyboardActions
@@ -21,6 +22,7 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.LayoutDirection
+import com.lw.ai.glasses.ui.theme.TextPrimary
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.debounce
 

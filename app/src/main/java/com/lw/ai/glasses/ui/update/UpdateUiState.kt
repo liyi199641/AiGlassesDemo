@@ -16,7 +16,7 @@ enum class OtaStatus {
 data class UpdateUiState(
     val otaStatus: OtaStatus = OtaStatus.IDLE,
     val progress: Int = 0,
-    val statusText: String = "请从下方列表选择或添加固件",
+    val statusText: String = "",
     val recentFiles: List<FirmwareFile> = emptyList(),
     val selectedFileId: String? = null,
     val availableOtaTypes: List<GlassesConstant.OtaType> = listOf(GlassesConstant.OtaType.FIRMWARE, GlassesConstant.OtaType.WIFI_ISP),

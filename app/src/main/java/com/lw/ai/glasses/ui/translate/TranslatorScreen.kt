@@ -56,8 +56,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.lw.ai.glasses.R
 import com.lw.top.lib_core.data.local.entity.TranslationMessageEntity
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -89,8 +91,8 @@ fun TranslatorScreen(
     if (showClearDialog) {
         AlertDialog(
             onDismissRequest = { showClearDialog = false },
-            title = { Text("清空记录") },
-            text = { Text("确定要删除所有的翻译历史记录吗？") },
+            title = { Text(stringResource(R.string.clear_records)) },
+            text = { Text(stringResource(R.string.clear_translation_history_message)) },
             confirmButton = {
                 TextButton(
                     onClick = {
@@ -98,11 +100,11 @@ fun TranslatorScreen(
                         showClearDialog = false
                     }
                 ) {
-                    Text("确定", color = MaterialTheme.colorScheme.error)
+                    Text(stringResource(R.string.confirm), color = MaterialTheme.colorScheme.error)
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showClearDialog = false }) { Text("取消") }
+                TextButton(onClick = { showClearDialog = false }) { Text(stringResource(R.string.cancel)) }
             }
         )
     }
@@ -124,15 +126,15 @@ fun TranslatorScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("AI翻译") },
+                title = { Text(stringResource(R.string.ai_translate_title)) },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back))
                     }
                 },
                 actions = {
                     IconButton(onClick = { showClearDialog = true }) {
-                        Icon(Icons.Default.Delete, contentDescription = "清空")
+                        Icon(Icons.Default.Delete, contentDescription = stringResource(R.string.clear))
                     }
                 }
             )
@@ -209,14 +211,14 @@ fun ModeSelector(
         FilterChip(
             selected = currentMode == TranslationMode.REAL_TIME,
             onClick = { onModeSelected(TranslationMode.REAL_TIME) },
-            label = { Text("实时翻译") },
+            label = { Text(stringResource(R.string.real_time_translate)) },
             shape = RoundedCornerShape(topStart = 8.dp, bottomStart = 8.dp),
             modifier = Modifier.weight(1f)
         )
         FilterChip(
             selected = currentMode == TranslationMode.DIALOGUE,
             onClick = { onModeSelected(TranslationMode.DIALOGUE) },
-            label = { Text("对话翻译") },
+            label = { Text(stringResource(R.string.dialogue_translate)) },
             shape = RoundedCornerShape(topEnd = 8.dp, bottomEnd = 8.dp),
             modifier = Modifier.weight(1f)
         )
@@ -242,7 +244,7 @@ fun LanguageTopBar(
     ) {
         TextButton(onClick = onSrcClick, modifier = Modifier.weight(1f)) {
             Text(
-                srcLang?.name ?: "选择语言",
+                srcLang?.name ?: stringResource(R.string.choose_language),
                 style = MaterialTheme.typography.bodyMedium,
                 maxLines = 1
             )
@@ -251,14 +253,14 @@ fun LanguageTopBar(
         IconButton(onClick = onSwapClick) {
             Icon(
                 Icons.Default.SwapHoriz,
-                contentDescription = "交换",
+                contentDescription = stringResource(R.string.swap),
                 tint = MaterialTheme.colorScheme.primary
             )
         }
 
         TextButton(onClick = onTargetClick, modifier = Modifier.weight(1f)) {
             Text(
-                targetLang?.name ?: "选择语言",
+                targetLang?.name ?: stringResource(R.string.choose_language),
                 style = MaterialTheme.typography.bodyMedium,
                 maxLines = 1
             )
@@ -294,7 +296,7 @@ fun LanguageSelectionSheet(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("选择语言", style = MaterialTheme.typography.titleLarge)
+                Text(stringResource(R.string.choose_language), style = MaterialTheme.typography.titleLarge)
                 IconButton(onClick = onDismissRequest) {
                     Icon(Icons.Default.Close, null)
                 }
@@ -306,7 +308,7 @@ fun LanguageSelectionSheet(
                 value = searchQuery,
                 onValueChange = { searchQuery = it },
                 modifier = Modifier.fillMaxWidth(),
-                placeholder = { Text("搜索语言...") },
+                placeholder = { Text(stringResource(R.string.search_language_hint)) },
                 leadingIcon = { Icon(Icons.Default.Search, null) },
                 singleLine = true
             )
@@ -407,7 +409,7 @@ fun RecordControlPanel(
             ) {
                 Icon(
                     imageVector = Icons.Default.Mic,
-                    contentDescription = "录音",
+                    contentDescription = stringResource(R.string.record_audio),
                     tint = iconColor,
                     modifier = Modifier.size(36.dp)
                 )
@@ -417,7 +419,7 @@ fun RecordControlPanel(
         Spacer(modifier = Modifier.height(8.dp))
 
         Text(
-            text = if (isRecording) "正在录音..." else "按住 说话",
+            text = if (isRecording) stringResource(R.string.recording_now) else stringResource(R.string.hold_to_talk),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
@@ -464,7 +466,7 @@ fun TranslationItemCard(
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text(
-                    text = if (item.translatedText.isNullOrEmpty()) "翻译中..." else item.translatedText,
+                    text = item.translatedText.ifEmpty { stringResource(R.string.translating) },
                     style = MaterialTheme.typography.titleMedium,
                     color = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.weight(1f)
@@ -476,7 +478,7 @@ fun TranslationItemCard(
                     ) {
                         Icon(
                             imageVector = Icons.Default.VolumeUp,
-                            contentDescription = "播放",
+                            contentDescription = stringResource(R.string.play_audio),
                             tint = MaterialTheme.colorScheme.primary
                         )
                     }

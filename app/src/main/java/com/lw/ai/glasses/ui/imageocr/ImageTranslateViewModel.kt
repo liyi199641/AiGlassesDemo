@@ -10,14 +10,17 @@
 package com.lw.ai.glasses.ui.imageocr
 
 import BaseViewModel
+import android.content.Context
 import android.graphics.BitmapFactory
 import android.util.Base64
 import androidx.lifecycle.viewModelScope
-import com.fission.wear.glasses.sdk.GlassesManage
+import com.fission.wear.glasses.sdk.AiAssistantClient
 import com.fission.wear.glasses.sdk.constant.GlassesConstant
 import com.fission.wear.glasses.sdk.data.model.LanguageResult
-import com.fission.wear.glasses.sdk.events.CmdResultEvent
+import com.fission.wear.glasses.sdk.events.AgentEvent
+import com.lw.ai.glasses.R
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -27,7 +30,9 @@ import java.io.File
 import javax.inject.Inject
 
 @HiltViewModel
-class ImageTranslateViewModel @Inject constructor() : BaseViewModel() {
+class ImageTranslateViewModel @Inject constructor(
+    @ApplicationContext private val context: Context
+) : BaseViewModel() {
     // 私有可变状态
     private val _uiState = MutableStateFlow(ImageTranslateUiState())
     // 公开不可变状态
@@ -56,19 +61,19 @@ class ImageTranslateViewModel @Inject constructor() : BaseViewModel() {
     private fun fetchLanguages() {
         _uiState.value = _uiState.value.copy(isLoading = true)
         viewModelScope.launch {
-            GlassesManage.getImageTransLangList(GlassesConstant.ImageTranslateServerType.VOLC_ENGINE)
+            AiAssistantClient.getInstance().getImageTransLangList(GlassesConstant.ImageTranslateServerType.VOLC_ENGINE)
         }
     }
 
     // 监听Repository的事件流
     private fun observeRepositoryEvents() {
         viewModelScope.launch {
-            GlassesManage.eventFlow().collect { event->
+            AiAssistantClient.getInstance().aiAgentEventFlow().collect { event->
                 when (event) {
-                    is CmdResultEvent.ImageTransLangListResult       -> {
+                    is AgentEvent.ImageTransLangListResult -> {
                         handleLanguageListResult(event.languageList)
                     }
-                    is CmdResultEvent.ImageTransResult -> {
+                    is AgentEvent.ImageTransResult     -> {
                         val imageBytes = Base64.decode(event.imageBase64, Base64.DEFAULT)
                         val bitmap = BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.size)
 
@@ -78,7 +83,7 @@ class ImageTranslateViewModel @Inject constructor() : BaseViewModel() {
                             errorMsg = ""
                         )
                     }
-                    is CmdResultEvent.ImageTransFailEvent ->{
+                    is AgentEvent.ImageTransFailEvent ->{
                         // 翻译失败
                         _uiState.value = _uiState.value.copy(
                             translatedImageBitmap = null,
@@ -132,15 +137,15 @@ class ImageTranslateViewModel @Inject constructor() : BaseViewModel() {
         // 前置校验
         when {
             currentState.originalImageFile == null -> {
-                _uiState.value = currentState.copy(errorMsg = "请先选择/拍摄图片")
+                _uiState.value = currentState.copy(errorMsg = context.getString(R.string.please_choose_image))
                 return
             }
             currentState.selectedSourceLang == null -> {
-                _uiState.value = currentState.copy(errorMsg = "请选择源语言")
+                _uiState.value = currentState.copy(errorMsg = context.getString(R.string.please_choose_source_language))
                 return
             }
             currentState.selectedTargetLang == null -> {
-                _uiState.value = currentState.copy(errorMsg = "请选择目标语言")
+                _uiState.value = currentState.copy(errorMsg = context.getString(R.string.please_choose_target_language))
                 return
             }
         }
@@ -152,7 +157,7 @@ class ImageTranslateViewModel @Inject constructor() : BaseViewModel() {
         )
 
         viewModelScope.launch {
-            GlassesManage.imageTrans(
+            AiAssistantClient.getInstance().imageTrans(
                 targetImage = currentState.originalImageFile,
                 sourceLanguage = currentState.selectedSourceLang.langType,
                 targetLanguage = currentState.selectedTargetLang.langType
