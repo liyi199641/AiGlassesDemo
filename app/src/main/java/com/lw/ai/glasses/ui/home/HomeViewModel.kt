@@ -1,18 +1,16 @@
 package com.lw.ai.glasses.ui.home
 
-import BaseViewModel
 import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
-import android.util.Log
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewModelScope
 import com.blankj.utilcode.util.LogUtils
 import com.blankj.utilcode.util.ToastUtils
+import com.fission.wear.glasses.sdk.AiAssistantClient
 import com.fission.wear.glasses.sdk.GlassesManage
 import com.fission.wear.glasses.sdk.config.AiAgentConfig
-import com.fission.wear.glasses.sdk.AiAssistantClient
 import com.fission.wear.glasses.sdk.config.BleComConfig
 import com.fission.wear.glasses.sdk.config.BleScanConfig
 import com.fission.wear.glasses.sdk.config.SdkConfig
@@ -26,7 +24,8 @@ import com.fission.wear.glasses.sdk.events.CmdResultEvent
 import com.fission.wear.glasses.sdk.events.ConnectionStateEvent
 import com.fission.wear.glasses.sdk.events.ScanStateEvent
 import com.lw.ai.glasses.R
-import com.lw.ai.glasses.service.AiAssistantService
+import com.lw.ai.glasses.ui.base.viewmodel.BaseViewModel
+import com.lw.ai.glasses.utils.toPersistedEnvironmentOrDefault
 import com.lw.top.lib_core.data.datastore.AppDataManager
 import com.lw.top.lib_core.data.datastore.BluetoothDataManager
 import com.polidea.rxandroidble3.exceptions.BleDisconnectedException
@@ -34,7 +33,6 @@ import com.polidea.rxandroidble3.exceptions.BleGattException
 import com.polidea.rxandroidble3.scan.ScanFilter
 import com.polidea.rxandroidble3.scan.ScanResult
 import com.polidea.rxandroidble3.scan.ScanSettings
-import kotlin.math.abs
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -44,6 +42,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
+import kotlin.math.abs
 
 @HiltViewModel
 class HomeViewModel @Inject constructor(
@@ -93,21 +92,16 @@ class HomeViewModel @Inject constructor(
         }
 
         viewModelScope.launch {
-            val connectionState =
-                ConnectionState.fromValue(bluetoothDataManager.getBluetoothState())
-            if (connectionState != ConnectionState.IDLE) {
-                if (!bluetoothDataManager.getBluetoothAddress().isNullOrEmpty()) {
-                    connectDevice(
-                        bluetoothDataManager.getBluetoothAddress()!!,
-                        bluetoothDataManager.getBluetoothName()!!
-                    )
+            if (ConnectionState.fromValue(bluetoothDataManager.getBluetoothState()) != ConnectionState.IDLE) {
+                bluetoothDataManager.getBluetoothName()?.let { savedName ->
                     _uiState.update {
-                        it.copy(
-                            connectedDeviceName = bluetoothDataManager.getBluetoothName()!!
-                        )
+                        it.copy(connectedDeviceName = savedName)
                     }
                 }
             }
+        }
+        viewModelScope.launch {
+            refreshHomeDeviceSummary()
         }
         checkAndRequestPermissions()
         observeGlassesEvents()
@@ -281,11 +275,6 @@ class HomeViewModel @Inject constructor(
                     }
 
                     is ConnectionStateEvent.Connecting -> {
-
-                        viewModelScope.launch {
-                            bluetoothDataManager.saveBluetoothState(ConnectionState.CONNECTING.value)
-                        }
-
                         _uiState.update {
                             it.copy(
                                 connectionState = ConnectionState.CONNECTING,
@@ -299,18 +288,7 @@ class HomeViewModel @Inject constructor(
                                 connectionState = ConnectionState.CONNECTED,
                             )
                         }
-                        viewModelScope.launch {
-                            bluetoothDataManager.saveBluetoothState(ConnectionState.CONNECTED.value)
-                        }
-                        
-                        // 启动 AI 助手前台保活服务
-                        AiAssistantService.start(context)
-
-                        GlassesManage.getBatteryLevel()
-                        GlassesManage.getMediaFileCount()
-                        connectAiAssistant()
-                        GlassesManage.getActionState()
-
+                        refreshHomeDeviceSummary()
                     }
 
                     is ConnectionStateEvent.Disconnected -> {
@@ -325,12 +303,6 @@ class HomeViewModel @Inject constructor(
                             _uiState.update {
                                 it.copy(connectionState = ConnectionState.DISCONNECTED)
                             }
-                        }
-
-                        AiAssistantService.stop(context)
-
-                        viewModelScope.launch {
-                            bluetoothDataManager.saveBluetoothState(ConnectionState.DISCONNECTED.value)
                         }
                     }
 
@@ -376,6 +348,14 @@ class HomeViewModel @Inject constructor(
                 }
             }
         }
+    }
+
+    private suspend fun refreshHomeDeviceSummary() {
+        if (ConnectionState.fromValue(bluetoothDataManager.getBluetoothState()) != ConnectionState.CONNECTED) {
+            return
+        }
+        GlassesManage.getBatteryLevel()
+        GlassesManage.getMediaFileCount()
     }
 
     private suspend fun connectAiAssistant(){
@@ -495,10 +475,11 @@ class HomeViewModel @Inject constructor(
                 ?.let { name ->
                     runCatching { GlassesConstant.ServerEnvironment.valueOf(name) }.getOrNull()
                 }
+                ?.toPersistedEnvironmentOrDefault()
                 ?: GlassesConstant.ServerEnvironment.entries.firstOrNull {
                     it.wsUrl == GlassesConstant.AI_ASSISTANT_BASE_WS_URL
                 }
-                ?: GlassesConstant.ServerEnvironment.CHINA
+                ?: GlassesConstant.ServerEnvironment.DEV
 
             _uiState.update {
                 it.copy(

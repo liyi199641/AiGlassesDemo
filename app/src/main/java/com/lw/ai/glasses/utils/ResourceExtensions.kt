@@ -13,7 +13,23 @@ fun GlassesConstant.ServerEnvironment.titleRes(): Int = when (this) {
     GlassesConstant.ServerEnvironment.EUROPE -> R.string.env_europe
     GlassesConstant.ServerEnvironment.SINGAPORE -> R.string.env_singapore
     GlassesConstant.ServerEnvironment.LOCAL -> R.string.env_local
+    GlassesConstant.ServerEnvironment.XFUSION_DIRECT,
+    GlassesConstant.ServerEnvironment.XFUSION_DIRECT_VOICE_TEST -> R.string.env_dev
 }
+
+private val hiddenServerEnvironments = setOf(
+    GlassesConstant.ServerEnvironment.XFUSION_DIRECT,
+    GlassesConstant.ServerEnvironment.XFUSION_DIRECT_VOICE_TEST,
+)
+
+fun GlassesConstant.ServerEnvironment.isSelectableInUi(): Boolean =
+    this !in hiddenServerEnvironments
+
+fun selectableServerEnvironments(): List<GlassesConstant.ServerEnvironment> =
+    GlassesConstant.ServerEnvironment.entries.filter { it.isSelectableInUi() }
+
+fun GlassesConstant.ServerEnvironment.toPersistedEnvironmentOrDefault(): GlassesConstant.ServerEnvironment =
+    if (isSelectableInUi()) this else GlassesConstant.ServerEnvironment.DEV
 
 @StringRes
 fun GlassesConstant.OtaType.titleRes(): Int = when (this) {

@@ -1,3 +1,5 @@
+package com.lw.ai.glasses.navigation
+
 import android.annotation.SuppressLint
 import androidx.compose.foundation.background
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -8,7 +10,6 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.blankj.utilcode.util.LogUtils
-import com.lw.ai.glasses.navigation.rememberSafeNavigateBack
 import com.lw.ai.glasses.ui.assistant.AiAssistantScreen
 import com.lw.ai.glasses.ui.call.CallScreen
 import com.lw.ai.glasses.ui.devicecontrol.DeviceControlScreen

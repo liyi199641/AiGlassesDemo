@@ -9,7 +9,6 @@
  */
 package com.lw.ai.glasses.ui.imageocr
 
-import BaseViewModel
 import android.content.Context
 import android.graphics.BitmapFactory
 import android.util.Base64
@@ -19,6 +18,7 @@ import com.fission.wear.glasses.sdk.constant.GlassesConstant
 import com.fission.wear.glasses.sdk.data.model.LanguageResult
 import com.fission.wear.glasses.sdk.events.AgentEvent
 import com.lw.ai.glasses.R
+import com.lw.ai.glasses.ui.base.viewmodel.BaseViewModel
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow

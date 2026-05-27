@@ -11,7 +11,6 @@ import android.view.View;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.Toast;
-
 import com.bytedance.sdk.open.aweme.CommonConstants;
 import com.bytedance.sdk.open.aweme.authorize.model.Authorization;
 import com.bytedance.sdk.open.aweme.common.handler.IApiEventHandler;
@@ -22,9 +21,7 @@ import com.bytedance.sdk.open.douyin.DouYinOpenApiFactory;
 import com.bytedance.sdk.open.douyin.api.DouYinOpenApi;
 import com.lw.ai.glasses.R;
 import com.lw.ai.glasses.ui.MainActivity;
-
 import java.io.IOException;
-
 import okhttp3.Call;
 import okhttp3.Callback;
 import okhttp3.FormBody;

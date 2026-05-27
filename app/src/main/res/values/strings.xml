@@ -52,6 +52,26 @@
     <string name="env_europe">Production (Europe)</string>
     <string name="env_singapore">Production (Singapore)</string>
     <string name="env_local">Local</string>
+    <string name="env_xfusion_direct">Vendor direct (XFusion test)</string>
+    <string name="env_xfusion_direct_voice_test">Vendor direct (voice test)</string>
+
+    <string name="voice_live_title">Voice Live</string>
+    <string name="voice_live_open">Voice Live</string>
+    <string name="voice_live_description">Enable Voice Live (/ws/v1/voicelive). Server-side VAD ends turns; uplink is not cut by local VAD. Reconnect glasses after apply; on production host try gpt-realtime-mini if no TTS.</string>
+    <string name="voice_live_enable">Enable Voice Live</string>
+    <string name="voice_live_disable">Disable Voice Live</string>
+    <string name="voice_live_enable_success">Voice Live enabled</string>
+    <string name="voice_live_disable_success">Voice Live disabled; PTT push-to-talk flow restored</string>
+    <string name="voice_live_status_enabled">Voice Live is ON</string>
+    <string name="voice_live_status_disabled">Voice Live is OFF</string>
+    <string name="voice_live_status_enabled_hint">Vendor bypass active. Use AI assistant on glasses to test.</string>
+    <string name="voice_live_status_disabled_hint">Tap the button below to apply Voice Live profile and connect.</string>
+    <string name="voice_live_server_env">Vendor server</string>
+    <string name="voice_live_ai_model">AI model (aiModel)</string>
+    <string name="voice_live_translation_mode">Translation mode</string>
+    <string name="voice_live_translation_mode_hint">Sets ext.translation_mode in config</string>
+    <string name="voice_live_config_summary">Current config</string>
+    <string name="voice_live_config_empty">Not applied yet</string>
 
     <string name="device_control_title">Device Control</string>
     <string name="music_control">Music Control</string>
@@ -148,6 +168,11 @@
     <string name="record_audio">Record</string>
     <string name="recording_now">Recording...</string>
     <string name="hold_to_talk">Hold to Talk</string>
+    <string name="hold_to_continue">Hold to Continue</string>
+    <string name="tap_to_start_recording">Tap to start</string>
+    <string name="tap_to_pause_recording">Tap to pause</string>
+    <string name="tap_to_resume_recording">Tap to resume</string>
+    <string name="long_press_to_end_recording">Long press to end</string>
     <string name="translating">Translating...</string>
     <string name="play_audio">Play</string>
 

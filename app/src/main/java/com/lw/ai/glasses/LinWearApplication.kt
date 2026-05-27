@@ -1,20 +1,14 @@
 package com.lw.ai.glasses
 
 import android.app.Application
-import android.os.Environment
 import com.blankj.utilcode.util.LogUtils
 import com.blankj.utilcode.util.Utils
 import com.bytedance.sdk.open.douyin.DouYinOpenApiFactory
 import com.bytedance.sdk.open.douyin.DouYinOpenConfig
-import com.fission.wear.glasses.sdk.AiAssistantClient
-import com.fission.wear.glasses.sdk.GlassesManage
-import com.fission.wear.glasses.sdk.constant.GlassesConstant
-import com.lw.top.lib_core.data.datastore.AppDataManager
+import com.lw.ai.glasses.startup.AppStartupReconnectManager
 import dagger.hilt.android.HiltAndroidApp
 import io.reactivex.rxjava3.exceptions.UndeliverableException
 import io.reactivex.rxjava3.plugins.RxJavaPlugins
-import kotlinx.coroutines.MainScope
-import kotlinx.coroutines.launch
 import java.io.IOException
 import java.net.SocketException
 import javax.inject.Inject
@@ -23,7 +17,7 @@ import javax.inject.Inject
 class LinWearApplication : Application(){
 
     @Inject
-    lateinit var appDataManager: AppDataManager
+    lateinit var startupReconnectManager: AppStartupReconnectManager
 
     override fun onCreate() {
         super.onCreate()
@@ -44,22 +38,7 @@ class LinWearApplication : Application(){
         DouYinOpenApiFactory.init(DouYinOpenConfig(clientkey))
 
         setupRxJavaErrorHandler()
-        initSavedEnvironment()
-    }
-
-    private fun initSavedEnvironment() {
-        MainScope().launch {
-            val savedLocalWsUrl = appDataManager.getLocalEnvironmentWsUrl()
-            val savedEnvName = appDataManager.getEnvironment()
-            savedEnvName?.let { name ->
-                try {
-                    val env = GlassesConstant.ServerEnvironment.valueOf(name)
-                    AiAssistantClient.applyServerEnvironmentToGlobals(env, savedLocalWsUrl)
-                } catch (e: Exception) {
-                    e.printStackTrace()
-                }
-            }
-        }
+        startupReconnectManager.start()
     }
 
     private fun setupRxJavaErrorHandler() {

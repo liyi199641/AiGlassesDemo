@@ -1,6 +1,6 @@
 package com.lw.ai.glasses.ui.live
 
-import BaseViewModel
+import com.lw.ai.glasses.ui.base.viewmodel.BaseViewModel
 import android.app.Activity
 import android.content.Context
 import android.net.ConnectivityManager

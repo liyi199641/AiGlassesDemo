@@ -1,6 +1,6 @@
 package com.lw.ai.glasses.ui.update
 
-import BaseViewModel
+import com.lw.ai.glasses.ui.base.viewmodel.BaseViewModel
 import android.content.Context
 import android.net.Uri
 import androidx.lifecycle.viewModelScope

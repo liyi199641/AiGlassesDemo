@@ -45,6 +45,8 @@ implementation("io.reactivex.rxjava3:rxjava:3.1.6")
 
 必需依赖项：
 - settings.gradle 添加： maven { url = uri("https://repo.repsy.io/mvn/linwear/android") }
+- settings.gradle 添加： maven { url = uri("https://maven.zego.im") }
+- 导入app/libs下的 aar/jar
 - RxJava3
 - RxAndroid
 - RxAndroidBle
@@ -160,7 +162,7 @@ AiAssistantClient.getInstance().aiAgentEventFlow().collect { events->
 - **StartRecording**：开始录音
 - **ReceivingAudioData**：持续接收录音数据
 - **GlassesManage.takePicture()**：AI 识图
-  - 回调事件：`CmdResultEvent.ImageData`
+    - 回调事件：`CmdResultEvent.ImageData`
 - **GlassesManage.stopVadAudio()**：停止录音
 ---
 
@@ -315,7 +317,7 @@ GlassesManage.getVoiceWakeUp()
 ### **5️⃣ 媒体与通话控制**
 
 ```kotlin
-GlassesManage.controlMusic(enable: Boolean)  // true 播放 / false 暂停（以固件为准）
+GlassesManage.controlMusic(Boolean)  // true 播放 / false 暂停（以固件为准）
 GlassesManage.switchMusic(LyCmdConstant.MusicSwitchAction.PREVIOUS) // 上一曲
 GlassesManage.switchMusic(LyCmdConstant.MusicSwitchAction.NEXT)     // 下一曲
 

@@ -2,7 +2,6 @@ package com.lw.ai.glasses.ui.call
 
 import android.content.Intent
 import android.view.TextureView
-import androidx.annotation.StringRes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -61,9 +60,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.annotation.StringRes
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.fission.wear.glasses.sdk.AiAssistantClient
-import com.fission.wear.glasses.sdk.GlassesManage
 import com.lw.ai.glasses.R
 
 private data class CallLanguage(
@@ -106,9 +105,9 @@ fun CallSetupContent(
 
     Column(
         modifier = Modifier
-                .fillMaxSize()
-                .statusBarsPadding()
-                .padding(24.dp),
+            .fillMaxSize()
+            .statusBarsPadding()
+            .padding(24.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
@@ -144,9 +143,9 @@ fun CallSetupContent(
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { viewModel.setLanguage(lang.code) }
-                        .padding(8.dp)
+                    .fillMaxWidth()
+                    .clickable { viewModel.setLanguage(lang.code) }
+                    .padding(8.dp)
             ) {
                 RadioButton(
                     selected = uiState.selectedLanguage == lang.code,
@@ -160,8 +159,8 @@ fun CallSetupContent(
         Button(
             onClick = { viewModel.startCall() },
             modifier = Modifier
-                    .fillMaxWidth()
-                    .height(56.dp),
+                .fillMaxWidth()
+                .height(56.dp),
             enabled = !uiState.isLoading,
             shape = RoundedCornerShape(12.dp)
         ) {
@@ -207,8 +206,8 @@ fun ActiveCallContent(
         LazyColumn(
             state = listState,
             modifier = Modifier
-                    .fillMaxSize()
-                    .padding(horizontal = 16.dp),
+                .fillMaxSize()
+                .padding(horizontal = 16.dp),
             contentPadding = PaddingValues(top = 100.dp, bottom = 150.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
@@ -221,8 +220,8 @@ fun ActiveCallContent(
         if (uiState.callMode == CallMode.VIDEO) {
             Column(
                 modifier = Modifier
-                        .align(Alignment.CenterEnd)
-                        .padding(end = 16.dp),
+                    .align(Alignment.CenterEnd)
+                    .padding(end = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 FloatingActionButton(
@@ -268,20 +267,20 @@ fun ActiveCallContent(
         // 4. 底部通话控制栏 (最顶层)
         Row(
             modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .fillMaxWidth()
-                    .padding(bottom = 48.dp),
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .padding(bottom = 48.dp),
             horizontalArrangement = Arrangement.SpaceEvenly,
             verticalAlignment = Alignment.CenterVertically
         ) {
             IconButton(
                 onClick = { viewModel.toggleMic() },
                 modifier = Modifier
-                        .size(56.dp)
-                        .background(
-                            if (uiState.isMicMuted) MaterialTheme.colorScheme.error else Color.DarkGray.copy(alpha = 0.6f),
-                            CircleShape
-                        )
+                    .size(56.dp)
+                    .background(
+                        if (uiState.isMicMuted) MaterialTheme.colorScheme.error else Color.DarkGray.copy(alpha = 0.6f),
+                        CircleShape
+                    )
             ) {
                 Icon(
                     imageVector = if (uiState.isMicMuted) Icons.Default.MicOff else Icons.Default.Mic,
@@ -293,8 +292,8 @@ fun ActiveCallContent(
             IconButton(
                 onClick = { viewModel.endCall() },
                 modifier = Modifier
-                        .size(72.dp)
-                        .background(MaterialTheme.colorScheme.error, CircleShape)
+                    .size(72.dp)
+                    .background(MaterialTheme.colorScheme.error, CircleShape)
             ) {
                 Icon(
                     Icons.Default.CallEnd,
@@ -307,11 +306,11 @@ fun ActiveCallContent(
             IconButton(
                 onClick = { viewModel.toggleSpeaker() },
                 modifier = Modifier
-                        .size(56.dp)
-                        .background(
-                            if (uiState.isSpeakerOn) MaterialTheme.colorScheme.primary else Color.DarkGray.copy(alpha = 0.6f),
-                            CircleShape
-                        )
+                    .size(56.dp)
+                    .background(
+                        if (uiState.isSpeakerOn) MaterialTheme.colorScheme.primary else Color.DarkGray.copy(alpha = 0.6f),
+                        CircleShape
+                    )
             ) {
                 Icon(
                     imageVector = if (uiState.isSpeakerOn) Icons.Default.VolumeUp else Icons.Default.VolumeOff,
@@ -333,9 +332,9 @@ fun ActiveCallContent(
                     context.startActivity(Intent.createChooser(send, shareTitle))
                 },
                 modifier = Modifier
-                        .align(Alignment.TopStart)
-                        .statusBarsPadding()
-                        .padding(start = 16.dp, top = 16.dp),
+                    .align(Alignment.TopStart)
+                    .statusBarsPadding()
+                    .padding(start = 16.dp, top = 16.dp),
                 containerColor = Color.Black.copy(alpha = 0.5f),
                 contentColor = Color.White,
                 shape = CircleShape
@@ -366,8 +365,8 @@ fun VideoOverlayLayout(
         } else {
             Box(
                 modifier = Modifier
-                        .fillMaxSize()
-                        .background(Color.Black.copy(alpha = 0.6f)),
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.6f)),
                 contentAlignment = Alignment.Center
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -387,9 +386,9 @@ fun VideoOverlayLayout(
         // 本地视频预览 (右上角小窗)
         Card(
             modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(top = 16.dp, end = 16.dp)
-                    .size(width = 90.dp, height = 130.dp),
+                .align(Alignment.TopEnd)
+                .padding(top = 16.dp, end = 16.dp)
+                .size(width = 90.dp, height = 130.dp),
             shape = RoundedCornerShape(8.dp),
             elevation = CardDefaults.cardElevation(4.dp)
         ) {
@@ -419,7 +418,7 @@ fun TranslationBubble(log: TranslationMessage) {
     val alignment = if (log.isFromMe) Alignment.CenterEnd else Alignment.CenterStart
     val bubbleColor = if (log.isFromMe) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.8f)
     else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.8f)
-
+    
     val shape = if (log.isFromMe) {
         RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp, bottomStart = 16.dp, bottomEnd = 0.dp)
     } else {

@@ -1,16 +1,14 @@
 package com.lw.ai.glasses.ui.call
 
-import BaseViewModel
+import com.lw.ai.glasses.ui.base.viewmodel.BaseViewModel
 import android.content.Context
 import android.view.TextureView
 import androidx.lifecycle.viewModelScope
 import com.blankj.utilcode.util.LogUtils
 import com.blankj.utilcode.util.ToastUtils
 import com.fission.wear.glasses.sdk.AiAssistantClient
-import com.fission.wear.glasses.sdk.GlassesManage
 import com.fission.wear.glasses.sdk.events.AgentEvent
 import com.fission.wear.glasses.sdk.events.AiTranslationEvent
-import com.fission.wear.glasses.sdk.events.CmdResultEvent
 import com.lw.ai.glasses.R
 import com.lw.top.lib_core.data.datastore.BluetoothDataManager
 import dagger.hilt.android.lifecycle.HiltViewModel

@@ -18,7 +18,6 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -117,8 +116,8 @@ fun AiAssistantScreen(
             messages = uiState.messages,
             streamingMessageId = uiState.streamingMessageId,
             modifier = Modifier
-                    .fillMaxSize()
-                    .padding(innerPadding)
+                .fillMaxSize()
+                .padding(innerPadding)
         )
     }
 }
@@ -236,8 +235,8 @@ private fun MessageContent(
             model = content,
             contentDescription = if (isQuestion) questionImage else answerImage,
             modifier = Modifier
-                    .widthIn(max = 240.dp)
-                    .clip(RoundedCornerShape(12.dp)),
+                .widthIn(max = 240.dp)
+                .clip(RoundedCornerShape(12.dp)),
             contentScale = ContentScale.Fit
         )
     } else {

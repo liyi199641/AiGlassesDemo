@@ -34,7 +34,7 @@ data class HomeUiState(
     val isCharging: Boolean? = null,
     val connectedDeviceName: String? = null,
     val pendingSyncPhotosCount: Int = 0,
-    val selectedEnvironment: GlassesConstant.ServerEnvironment = GlassesConstant.ServerEnvironment.CHINA,
+    val selectedEnvironment: GlassesConstant.ServerEnvironment = GlassesConstant.ServerEnvironment.DEV,
     val localEnvironmentWsUrl: String = GlassesConstant.ServerEnvironment.LOCAL.wsUrl,
     val features: List<Feature> = emptyList()
 ) {
@@ -85,16 +85,16 @@ data class HomeUiState(
                     route = "av_call"
                 ),
                 Feature(
-                    id = "glasses_settings",
-                    nameRes = R.string.feature_glasses_settings,
-                    icon = Icons.Default.Settings,
-                    route = "glasses_settings"
-                ),
-                Feature(
                     id = "ota_update",
                     nameRes = R.string.feature_ota_update,
                     icon = Icons.Default.SystemUpdate,
                     route = "ota_update"
+                ),
+                Feature(
+                    id = "glasses_settings",
+                    nameRes = R.string.feature_glasses_settings,
+                    icon = Icons.Default.Settings,
+                    route = "glasses_settings"
                 )
             )
         }

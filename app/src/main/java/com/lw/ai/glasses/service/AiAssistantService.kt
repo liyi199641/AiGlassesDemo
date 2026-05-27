@@ -11,8 +11,8 @@ import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
-import com.lw.ai.glasses.R
 import com.lw.ai.glasses.ui.MainActivity
+import com.lw.ai.glasses.R
 
 class AiAssistantService : Service() {
 
@@ -67,8 +67,8 @@ class AiAssistantService : Service() {
         )
 
         return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("眼镜 AI 助手已就绪")
-            .setContentText("保持与眼镜的实时连接...")
+            .setContentTitle(getString(R.string.ai_assistant_notification_title))
+            .setContentText(getString(R.string.ai_assistant_notification_text))
             .setSmallIcon(R.drawable.ic_launcher_foreground)
             .setPriority(NotificationCompat.PRIORITY_DEFAULT) // 提高优先级
             .setContentIntent(pendingIntent)
@@ -81,10 +81,10 @@ class AiAssistantService : Service() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
                 CHANNEL_ID,
-                "眼镜 AI 助手保活",
+                getString(R.string.ai_assistant_notification_channel),
                 NotificationManager.IMPORTANCE_DEFAULT // 提高重要性以确保显示
             ).apply {
-                description = "用于在手机黑屏时保持 AI 助手的网络连接"
+                description = getString(R.string.ai_assistant_notification_channel_desc)
                 setShowBadge(false)
             }
             val manager = getSystemService(NotificationManager::class.java)

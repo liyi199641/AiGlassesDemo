@@ -1,17 +1,18 @@
 package com.lw.ai.glasses.ui.assistant
 
-import BaseViewModel
 import android.content.Context
 import androidx.lifecycle.viewModelScope
 import com.blankj.utilcode.util.LogUtils
-import com.fission.wear.glasses.sdk.AiAssistantClient
 import com.fission.wear.glasses.sdk.GlassesManage
+import com.fission.wear.glasses.sdk.AiAssistantClient
+import com.fission.wear.glasses.sdk.constant.GlassesConstant.BtMediaKeyAction
 import com.fission.wear.glasses.sdk.data.dto.AiChatMessageDTO
 import com.fission.wear.glasses.sdk.data.dto.AiContentType
 import com.fission.wear.glasses.sdk.data.model.McpScheduleData
 import com.fission.wear.glasses.sdk.events.AgentEvent
 import com.fission.wear.glasses.sdk.events.AudioStateEvent
 import com.fission.wear.glasses.sdk.events.CmdResultEvent
+import com.lw.ai.glasses.ui.base.viewmodel.BaseViewModel
 import com.lw.top.lib_core.data.local.entity.AiAssistantEntity
 import com.lw.top.lib_core.data.repository.AiAssistantRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -169,6 +170,17 @@ class AiAssistantViewModel @Inject constructor(
                         LogUtils.d("停止录音")
                     }
 
+                    is CmdResultEvent.DeviceBtnClickEvent ->{
+                        when(event.type){
+                            BtMediaKeyAction.CLICK -> {
+                                GlassesManage.interruptAiAssistant()
+                            }
+                            else -> {
+
+                            }
+                        }
+                    }
+
                     else -> {
 
                     }
@@ -186,10 +198,11 @@ class AiAssistantViewModel @Inject constructor(
 
         currentMessage = if (currentMessage != null) {
             currentMessage!!.copy(
-                question = currentMessage!!.question + questionText,
-                answer = currentMessage!!.answer + answerText,
-                questionType = mapContentType(result.questionType),
-                answerType = mapContentType(result.answerType),
+                // STT 流式返回的是整句快照（如 你几 -> 你几岁了），每次应替换而非拼接
+                question = if (questionText.isNotEmpty()) questionText else currentMessage!!.question,
+                answer = if (answerText.isNotEmpty()) currentMessage!!.answer + answerText else currentMessage!!.answer,
+                questionType = if (questionText.isNotEmpty()) mapContentType(result.questionType) else currentMessage!!.questionType,
+                answerType = if (answerText.isNotEmpty()) mapContentType(result.answerType) else currentMessage!!.answerType,
                 timestamp = currentMessage!!.timestamp
             )
         } else {
