@@ -1,8 +1,10 @@
 package com.lw.ai.glasses.ui.translate
 
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.PressInteraction
 import androidx.compose.foundation.layout.Arrangement
@@ -14,6 +16,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -26,6 +29,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.filled.VolumeUp
@@ -140,12 +144,18 @@ fun TranslatorScreen(
             )
         },
         bottomBar = {
-            RecordControlPanel(
-                isRecording = uiState.isRecording,
-                currentAmplitude = uiState.currentAmplitude,
-                onStartRecording = { viewModel.startRecording() },
-                onStopRecording = { viewModel.stopRecording() }
-            )
+            Column(modifier = Modifier.navigationBarsPadding()) {
+                RecordControlPanel(
+                    isRecording = uiState.isRecording,
+                    isRealTimeSessionActive = uiState.isRealTimeSessionActive,
+                    currentMode = uiState.currentMode,
+                    currentAmplitude = uiState.currentAmplitude,
+                    onStartRecording = { viewModel.startRecording() },
+                    onStopRecording = { viewModel.stopRecording() },
+                    onToggleRealTimeRecording = { viewModel.toggleRealTimeRecording() },
+                    onEndRealTimeRecording = { viewModel.endRealTimeRecording() },
+                )
+            }
         }
     ) { paddingValues ->
         Column(
@@ -334,11 +344,140 @@ fun LanguageSelectionSheet(
 @Composable
 fun RecordControlPanel(
     isRecording: Boolean,
+    isRealTimeSessionActive: Boolean,
+    currentMode: TranslationMode,
     currentAmplitude: Float,
     onStartRecording: () -> Unit,
-    onStopRecording: () -> Unit
+    onStopRecording: () -> Unit,
+    onToggleRealTimeRecording: () -> Unit,
+    onEndRealTimeRecording: () -> Unit,
 ) {
+    if (currentMode == TranslationMode.REAL_TIME) {
+        RealTimeRecordControlPanel(
+            isRecording = isRecording,
+            isRealTimeSessionActive = isRealTimeSessionActive,
+            currentAmplitude = currentAmplitude,
+            onToggleRecording = onToggleRealTimeRecording,
+            onEndRecording = onEndRealTimeRecording,
+        )
+    } else {
+        DialogueRecordControlPanel(
+            isRecording = isRecording,
+            currentAmplitude = currentAmplitude,
+            onStartRecording = onStartRecording,
+            onStopRecording = onStopRecording,
+        )
+    }
+}
 
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun RealTimeRecordControlPanel(
+    isRecording: Boolean,
+    isRealTimeSessionActive: Boolean,
+    currentAmplitude: Float,
+    onToggleRecording: () -> Unit,
+    onEndRecording: () -> Unit,
+) {
+    val pressScale by animateFloatAsState(
+        targetValue = if (isRecording) 1.1f else 1.0f,
+        label = "pressScale"
+    )
+    val volumeScale by animateFloatAsState(
+        targetValue = if (isRecording) 1.0f + (currentAmplitude * 0.8f) else 1.0f,
+        label = "volumeScale"
+    )
+
+    val containerColor = when {
+        isRecording -> MaterialTheme.colorScheme.error
+        isRealTimeSessionActive -> MaterialTheme.colorScheme.tertiary
+        else -> MaterialTheme.colorScheme.primary
+    }
+    val iconColor = when {
+        isRecording -> MaterialTheme.colorScheme.onError
+        isRealTimeSessionActive -> MaterialTheme.colorScheme.onTertiary
+        else -> MaterialTheme.colorScheme.onPrimary
+    }
+    val icon = when {
+        isRecording -> Icons.Default.Mic
+        isRealTimeSessionActive -> Icons.Default.Pause
+        else -> Icons.Default.Mic
+    }
+    val interactionSource = remember { MutableInteractionSource() }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.surface)
+            .padding(vertical = 24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Box(
+            contentAlignment = Alignment.Center,
+            modifier = Modifier.size(120.dp)
+        ) {
+            if (isRecording) {
+                Box(
+                    modifier = Modifier
+                        .size(80.dp)
+                        .scale(volumeScale)
+                        .background(
+                            color = containerColor.copy(alpha = 0.3f),
+                            shape = CircleShape
+                        )
+                )
+            }
+
+            Box(
+                modifier = Modifier
+                    .size(80.dp)
+                    .scale(pressScale)
+                    .background(containerColor, CircleShape)
+                    .combinedClickable(
+                        onClick = onToggleRecording,
+                        onLongClick = onEndRecording,
+                        indication = null,
+                        interactionSource = interactionSource,
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = stringResource(R.string.record_audio),
+                    tint = iconColor,
+                    modifier = Modifier.size(36.dp)
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        Text(
+            text = when {
+                isRecording -> stringResource(R.string.tap_to_pause_recording)
+                isRealTimeSessionActive -> stringResource(R.string.tap_to_resume_recording)
+                else -> stringResource(R.string.tap_to_start_recording)
+            },
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        if (isRealTimeSessionActive || isRecording) {
+            Text(
+                text = stringResource(R.string.long_press_to_end_recording),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+            )
+        }
+    }
+}
+
+@Composable
+private fun DialogueRecordControlPanel(
+    isRecording: Boolean,
+    currentAmplitude: Float,
+    onStartRecording: () -> Unit,
+    onStopRecording: () -> Unit,
+) {
     val interactionSource = remember { MutableInteractionSource() }
     val currentStart by rememberUpdatedState(onStartRecording)
     val currentStop by rememberUpdatedState(onStopRecording)
@@ -346,15 +485,9 @@ fun RecordControlPanel(
     LaunchedEffect(interactionSource) {
         interactionSource.interactions.collect { interaction ->
             when (interaction) {
-                is PressInteraction.Press -> {
-                    currentStart()
-                }
-                is PressInteraction.Release -> {
-                    currentStop()
-                }
-                is PressInteraction.Cancel -> {
-                    currentStop()
-                }
+                is PressInteraction.Press -> currentStart()
+                is PressInteraction.Release -> currentStop()
+                is PressInteraction.Cancel -> currentStop()
             }
         }
     }
@@ -363,7 +496,6 @@ fun RecordControlPanel(
         targetValue = if (isRecording) 1.1f else 1.0f,
         label = "pressScale"
     )
-
     val volumeScale by animateFloatAsState(
         targetValue = if (isRecording) 1.0f + (currentAmplitude * 0.8f) else 1.0f,
         label = "volumeScale"
@@ -403,7 +535,7 @@ fun RecordControlPanel(
                     .clickable(
                         interactionSource = interactionSource,
                         indication = null,
-                        onClick = {  }
+                        onClick = {},
                     ),
                 contentAlignment = Alignment.Center
             ) {
@@ -419,7 +551,11 @@ fun RecordControlPanel(
         Spacer(modifier = Modifier.height(8.dp))
 
         Text(
-            text = if (isRecording) stringResource(R.string.recording_now) else stringResource(R.string.hold_to_talk),
+            text = if (isRecording) {
+                stringResource(R.string.recording_now)
+            } else {
+                stringResource(R.string.hold_to_talk)
+            },
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )

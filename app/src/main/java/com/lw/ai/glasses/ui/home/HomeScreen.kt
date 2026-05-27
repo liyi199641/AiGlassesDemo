@@ -76,6 +76,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.fission.wear.glasses.sdk.constant.GlassesConstant
 import com.lw.ai.glasses.R
 import com.lw.ai.glasses.ui.base.screen.popup.CenteredFadeInPopup
+import com.lw.ai.glasses.utils.selectableServerEnvironments
 import com.lw.ai.glasses.utils.titleRes
 import com.polidea.rxandroidble3.scan.ScanResult
 import kotlinx.coroutines.launch
@@ -105,7 +106,7 @@ fun HomeScreen(
                     Text(stringResource(R.string.environment_switch_hint), style = MaterialTheme.typography.bodySmall)
                     Spacer(modifier = Modifier.height(12.dp))
                     LazyColumn(modifier = Modifier.fillMaxWidth()) {
-                        items(GlassesConstant.ServerEnvironment.entries) { env ->
+                        items(selectableServerEnvironments()) { env ->
                             val isLocalEnv = env == GlassesConstant.ServerEnvironment.LOCAL
                             val applyEnvironment = {
                                 if (isLocalEnv) {

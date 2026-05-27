@@ -1,3 +1,4 @@
+package com.lw.ai.glasses.ui.base.screen
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope

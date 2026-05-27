@@ -53,6 +53,26 @@
     <string name="env_europe">正式德国</string>
     <string name="env_singapore">正式新加坡</string>
     <string name="env_local">本地环境</string>
+    <string name="env_xfusion_direct">供应商直连测试</string>
+    <string name="env_xfusion_direct_voice_test">供应商直连语音测试</string>
+
+    <string name="voice_live_title">Voice Live 实时语音</string>
+    <string name="voice_live_open">Voice Live</string>
+    <string name="voice_live_description">手动启用供应商直连 Voice Live（/ws/v1/voicelive）。由服务端判停，本地 VAD 不会截断上行。启用后请重新连接眼镜；正式环境若仍无 TTS，可尝试模型 gpt-realtime-mini。</string>
+    <string name="voice_live_enable">启用 Voice Live</string>
+    <string name="voice_live_disable">关闭 Voice Live</string>
+    <string name="voice_live_enable_success">已启用 Voice Live</string>
+    <string name="voice_live_disable_success">已关闭 Voice Live，已恢复 PTT 按压式语音流程</string>
+    <string name="voice_live_status_enabled">Voice Live 已开启</string>
+    <string name="voice_live_status_disabled">Voice Live 未开启</string>
+    <string name="voice_live_status_enabled_hint">供应商旁路已生效，请在眼镜上测试语音助手。</string>
+    <string name="voice_live_status_disabled_hint">点击下方按钮应用 Voice Live 配置并连接供应商服务。</string>
+    <string name="voice_live_server_env">供应商服务器</string>
+    <string name="voice_live_ai_model">模型 (aiModel)</string>
+    <string name="voice_live_translation_mode">翻译模式</string>
+    <string name="voice_live_translation_mode_hint">对应 config 中 ext.translation_mode</string>
+    <string name="voice_live_config_summary">当前配置</string>
+    <string name="voice_live_config_empty">尚未应用</string>
 
     <string name="device_control_title">功能控制</string>
     <string name="music_control">音乐控制</string>
@@ -149,6 +169,11 @@
     <string name="record_audio">录音</string>
     <string name="recording_now">正在录音...</string>
     <string name="hold_to_talk">按住 说话</string>
+    <string name="hold_to_continue">按住 继续</string>
+    <string name="tap_to_start_recording">单击开始</string>
+    <string name="tap_to_pause_recording">单击暂停</string>
+    <string name="tap_to_resume_recording">单击继续</string>
+    <string name="long_press_to_end_recording">长按结束</string>
     <string name="translating">翻译中...</string>
     <string name="play_audio">播放</string>
 

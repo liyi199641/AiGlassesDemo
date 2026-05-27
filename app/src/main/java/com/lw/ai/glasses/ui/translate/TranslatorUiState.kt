@@ -18,6 +18,8 @@ data class TranslatorUiState(
     // 当前正在展示的消息列表（通常取最近的一个 session 里的 messages）
     val currentMessages: List<TranslationMessageEntity> = emptyList(),
     val isRecording: Boolean = false,
+    /** 实时翻译会话进行中（松手暂停，再次按住继续）。 */
+    val isRealTimeSessionActive: Boolean = false,
     val recordingLanguage: String = "",
     val currentAmplitude: Float = 0f,
     val allLanguages: List<Language> = emptyList(),

@@ -1,6 +1,5 @@
 package com.lw.ai.glasses.ui
 
-import AppNavHost
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -9,8 +8,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Surface
 import androidx.compose.ui.Modifier
+import com.lw.ai.glasses.navigation.AppNavHost
 import com.lw.ai.glasses.ui.theme.AiGlassesTheme
-import com.lw.ai.glasses.ui.theme.Primary
+import com.lw.ai.glasses.ui.theme.PrimaryBackground
 import dagger.hilt.android.AndroidEntryPoint
 
 @AndroidEntryPoint
@@ -23,7 +23,7 @@ class MainActivity : ComponentActivity() {
             AiGlassesTheme(
                 dynamicColor = false
             ) {
-                Surface(modifier = Modifier.Companion.fillMaxSize(), color = Primary) {
+                Surface(modifier = Modifier.Companion.fillMaxSize(), color = PrimaryBackground) {
                     AppNavHost()
                 }
             }

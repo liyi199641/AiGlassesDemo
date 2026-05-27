@@ -1,6 +1,6 @@
 package com.lw.ai.glasses.ui.setting
 
-import BaseViewModel
+import com.lw.ai.glasses.ui.base.viewmodel.BaseViewModel
 import android.content.Context
 import androidx.lifecycle.viewModelScope
 import com.blankj.utilcode.util.LogUtils

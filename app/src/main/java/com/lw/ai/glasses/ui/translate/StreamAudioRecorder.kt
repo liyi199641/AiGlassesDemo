@@ -3,8 +3,12 @@ package com.lw.ai.glasses.ui.translate
 import android.annotation.SuppressLint
 import android.content.Context
 import android.media.AudioFormat
+import android.media.AudioManager
 import android.media.AudioRecord
 import android.media.MediaRecorder
+import android.media.audiofx.AcousticEchoCanceler
+import android.media.audiofx.AutomaticGainControl
+import android.media.audiofx.NoiseSuppressor
 import com.blankj.utilcode.util.LogUtils
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -24,6 +28,10 @@ class StreamAudioRecorder(private val context: Context) {
 
     private var fileOutputStream: FileOutputStream? = null
     private var currentFilePath: String? = null
+    private var acousticEchoCanceler: AcousticEchoCanceler? = null
+    private var noiseSuppressor: NoiseSuppressor? = null
+    private var automaticGainControl: AutomaticGainControl? = null
+    private var previousAudioMode: Int? = null
 
     companion object {
         const val SAMPLE_RATE = 16000
@@ -35,19 +43,22 @@ class StreamAudioRecorder(private val context: Context) {
     fun start(fileName: String, onAudioData: (ByteArray) -> Unit) {
         if (isRecording) return
 
+        enableCommunicationMode()
+
         val minBufferSize = AudioRecord.getMinBufferSize(
             SAMPLE_RATE,
             CHANNEL_CONFIG,
             AUDIO_FORMAT
-        )*2
+        ) * 2
 
         audioRecord = AudioRecord(
-            MediaRecorder.AudioSource.MIC,
+            MediaRecorder.AudioSource.VOICE_COMMUNICATION,
             SAMPLE_RATE,
             CHANNEL_CONFIG,
             AUDIO_FORMAT,
             minBufferSize
         )
+        enableAudioEffects(audioRecord?.audioSessionId ?: 0)
 
         val file = File(context.cacheDir, "$fileName.pcm")
         LogUtils.d("录音文件地址：$file")
@@ -59,6 +70,7 @@ class StreamAudioRecorder(private val context: Context) {
             isRecording = true
         } catch (e: Exception) {
             e.printStackTrace()
+            releaseAudioRecordResources()
             return
         }
 
@@ -90,16 +102,11 @@ class StreamAudioRecorder(private val context: Context) {
 
         try {
             audioRecord?.stop()
-            audioRecord?.release()
-            audioRecord = null
-
             recordingJob?.cancel()
-
-            fileOutputStream?.flush()
-            fileOutputStream?.close()
-
         } catch (e: Exception) {
             e.printStackTrace()
+        } finally {
+            releaseAudioRecordResources()
         }
 
         return withContext(Dispatchers.IO) {
@@ -109,6 +116,76 @@ class StreamAudioRecorder(private val context: Context) {
 
     fun getCurrentAmplitude(): Float {
         return 0f
+    }
+
+    private fun enableCommunicationMode() {
+        val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        previousAudioMode = audioManager.mode
+        audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
+    }
+
+    private fun restoreAudioMode() {
+        val audioMode = previousAudioMode ?: return
+        val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        audioManager.mode = audioMode
+        previousAudioMode = null
+    }
+
+    private fun enableAudioEffects(audioSessionId: Int) {
+        if (audioSessionId == 0) return
+
+        try {
+            if (AcousticEchoCanceler.isAvailable()) {
+                acousticEchoCanceler = AcousticEchoCanceler.create(audioSessionId)?.apply {
+                    enabled = true
+                }
+                LogUtils.d("AcousticEchoCanceler enabled=${acousticEchoCanceler?.enabled}")
+            }
+        } catch (e: Exception) {
+            LogUtils.e("Enable AcousticEchoCanceler failed", e)
+        }
+        try {
+            if (NoiseSuppressor.isAvailable()) {
+                noiseSuppressor = NoiseSuppressor.create(audioSessionId)?.apply {
+                    enabled = true
+                }
+                LogUtils.d("NoiseSuppressor enabled=${noiseSuppressor?.enabled}")
+            }
+        } catch (e: Exception) {
+            LogUtils.e("Enable NoiseSuppressor failed", e)
+        }
+        try {
+            if (AutomaticGainControl.isAvailable()) {
+                automaticGainControl = AutomaticGainControl.create(audioSessionId)?.apply {
+                    enabled = true
+                }
+                LogUtils.d("AutomaticGainControl enabled=${automaticGainControl?.enabled}")
+            }
+        } catch (e: Exception) {
+            LogUtils.e("Enable AutomaticGainControl failed", e)
+        }
+    }
+
+    private fun releaseAudioRecordResources() {
+        try {
+            acousticEchoCanceler?.release()
+            acousticEchoCanceler = null
+            noiseSuppressor?.release()
+            noiseSuppressor = null
+            automaticGainControl?.release()
+            automaticGainControl = null
+
+            audioRecord?.release()
+            audioRecord = null
+
+            fileOutputStream?.flush()
+            fileOutputStream?.close()
+            fileOutputStream = null
+        } catch (e: Exception) {
+            e.printStackTrace()
+        } finally {
+            restoreAudioMode()
+        }
     }
 
     private fun convertPcmToWav(pcmPath: String?): String? {

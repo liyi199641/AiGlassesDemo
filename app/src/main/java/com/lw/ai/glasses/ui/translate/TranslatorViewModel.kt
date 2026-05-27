@@ -1,6 +1,6 @@
 package com.lw.ai.glasses.ui.translate
 
-import BaseViewModel
+import com.lw.ai.glasses.ui.base.viewmodel.BaseViewModel
 import android.content.Context
 import androidx.lifecycle.viewModelScope
 import com.fission.wear.glasses.sdk.GlassesManage
@@ -18,6 +18,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.filterIsInstance
@@ -42,6 +43,8 @@ class TranslatorViewModel @Inject constructor(
     private var mediaPlayer: android.media.MediaPlayer? = null
     /** 进入翻译页前设备的本地离线语音启用状态，用于离开时仅恢复 Opus 推送开关。 */
     private var localOfflineVoiceEnabled = true
+    /** 实时翻译会话是否仍在进行（松手仅暂停，不结束）。 */
+    private var realTimeSessionActive = false
 
     init {
         disableOpusStreamPushForTranslation()
@@ -167,6 +170,11 @@ class TranslatorViewModel @Inject constructor(
     }
 
     fun setTranslationMode(mode: TranslationMode) {
+        if (_uiState.value.currentMode == TranslationMode.REAL_TIME &&
+            mode == TranslationMode.DIALOGUE
+        ) {
+            endRealTimeSession()
+        }
         _uiState.update { it.copy(currentMode = mode) }
     }
 
@@ -180,27 +188,41 @@ class TranslatorViewModel @Inject constructor(
     }
 
     fun startRecording() {
+        if (_uiState.value.isRecording) return
         val fileName = "record_${System.currentTimeMillis()}"
         _uiState.update { it.copy(isRecording = true) }
 
         viewModelScope.launch {
-            val requestId = System.currentTimeMillis() // 发起一个新会话 ID
-            
-            AiAssistantClient.getInstance().startAiTranslation(
-                uiState.value.srcLang?.langType!!,
-                listOf(uiState.value.targetLang?.langType!!),
-                requestId,
-                audioFormat = GlassesConstant.AI_TRANSLATION_AUDIO_FORMAT_RAW_PCM,
-            )
-
-            val modeStr = when (_uiState.value.currentMode) {
-                TranslationMode.DIALOGUE -> GlassesConstant.AI_ASSISTANT_TYPE_LISTEN_MODE_TRANSLATION
-                TranslationMode.REAL_TIME -> GlassesConstant.AI_ASSISTANT_TYPE_LISTEN_MODE_SIMULTANEOUS_INTERPRETATION
+            val modeStr = listenModeFor(_uiState.value.currentMode)
+            when (_uiState.value.currentMode) {
+                TranslationMode.REAL_TIME -> {
+                    if (!realTimeSessionActive) {
+                        val requestId = System.currentTimeMillis()
+                        AiAssistantClient.getInstance().startAiTranslation(
+                            uiState.value.srcLang?.langType!!,
+                            listOf(uiState.value.targetLang?.langType!!),
+                            requestId,
+                            audioFormat = GlassesConstant.AI_TRANSLATION_AUDIO_FORMAT_RAW_PCM,
+                        )
+                        realTimeSessionActive = true
+                        _uiState.update { it.copy(isRealTimeSessionActive = true) }
+                        delay(100)
+                    }
+                    AiAssistantClient.getInstance().startReceivingAudio(modeStr, 140)
+                }
+                TranslationMode.DIALOGUE -> {
+                    val requestId = System.currentTimeMillis()
+                    AiAssistantClient.getInstance().startAiTranslation(
+                        uiState.value.srcLang?.langType!!,
+                        listOf(uiState.value.targetLang?.langType!!),
+                        requestId,
+                        audioFormat = GlassesConstant.AI_TRANSLATION_AUDIO_FORMAT_RAW_PCM,
+                    )
+                    delay(100)
+                    AiAssistantClient.getInstance().startReceivingAudio(modeStr, 140)
+                }
             }
 
-            delay(100)
-            AiAssistantClient.getInstance().startReceivingAudio(modeStr, 140)
-            
             streamRecorder.start(fileName) { pcmData ->
                 AiAssistantClient.getInstance().sendReceivingAudioData(modeStr, pcmData)
                 val amplitude = calculateRMS(pcmData)
@@ -210,22 +232,69 @@ class TranslatorViewModel @Inject constructor(
     }
 
     fun stopRecording() {
+        if (!_uiState.value.isRecording) return
         viewModelScope.launch {
             streamRecorder.stop()
             _uiState.update { it.copy(isRecording = false, currentAmplitude = 0f) }
-            
-            val modeStr = when (_uiState.value.currentMode) {
-                TranslationMode.DIALOGUE -> GlassesConstant.AI_ASSISTANT_TYPE_LISTEN_MODE_TRANSLATION
-                TranslationMode.REAL_TIME -> GlassesConstant.AI_ASSISTANT_TYPE_LISTEN_MODE_SIMULTANEOUS_INTERPRETATION
+
+            when (_uiState.value.currentMode) {
+                TranslationMode.REAL_TIME -> AiAssistantClient.getInstance().pauseListening()
+                TranslationMode.DIALOGUE -> AiAssistantClient.getInstance().stopReceivingAudio(
+                    GlassesConstant.AI_ASSISTANT_TYPE_LISTEN_MODE_TRANSLATION
+                )
             }
-            AiAssistantClient.getInstance().stopReceivingAudio(modeStr)
+        }
+    }
+
+    /** 实时翻译：单击在开始/暂停之间切换。 */
+    fun toggleRealTimeRecording() {
+        if (_uiState.value.currentMode != TranslationMode.REAL_TIME) return
+        if (_uiState.value.isRecording) {
+            stopRecording()
+        } else {
+            startRecording()
+        }
+    }
+
+    /** 实时翻译：长按结束整场会话。 */
+    fun endRealTimeRecording() {
+        if (_uiState.value.currentMode != TranslationMode.REAL_TIME) return
+        endRealTimeSession()
+    }
+
+    private fun endRealTimeSession() {
+        viewModelScope.launch {
+            if (_uiState.value.isRecording) {
+                streamRecorder.stop()
+            }
+            if (realTimeSessionActive) {
+                AiAssistantClient.getInstance().stopReceivingAudio(
+                    GlassesConstant.AI_ASSISTANT_TYPE_LISTEN_MODE_SIMULTANEOUS_INTERPRETATION
+                )
+                realTimeSessionActive = false
+            }
+            _uiState.update {
+                it.copy(isRecording = false, currentAmplitude = 0f, isRealTimeSessionActive = false)
+            }
         }
     }
 
     fun clearHistory() {
         viewModelScope.launch {
+            if (realTimeSessionActive) {
+                AiAssistantClient.getInstance().stopReceivingAudio(
+                    GlassesConstant.AI_ASSISTANT_TYPE_LISTEN_MODE_SIMULTANEOUS_INTERPRETATION
+                )
+                realTimeSessionActive = false
+                _uiState.update { it.copy(isRealTimeSessionActive = false) }
+            }
             repository.clearAllTranslations()
         }
+    }
+
+    private fun listenModeFor(mode: TranslationMode): String = when (mode) {
+        TranslationMode.DIALOGUE -> GlassesConstant.AI_ASSISTANT_TYPE_LISTEN_MODE_TRANSLATION
+        TranslationMode.REAL_TIME -> GlassesConstant.AI_ASSISTANT_TYPE_LISTEN_MODE_SIMULTANEOUS_INTERPRETATION
     }
 
     fun playAudio(path: String) {
@@ -262,11 +331,22 @@ class TranslatorViewModel @Inject constructor(
 
     override fun onCleared() {
         restoreOpusStreamPushAfterTranslation()
-        super.onCleared()
-        viewModelScope.launch {
-            streamRecorder.stop()
-            mediaPlayer?.release()
-            mediaPlayer = null
+        if (_uiState.value.isRecording) {
+            runBlocking(Dispatchers.IO) {
+                try {
+                    streamRecorder.stop()
+                } catch (_: Exception) {
+                }
+            }
         }
+        if (realTimeSessionActive) {
+            AiAssistantClient.getInstance().stopReceivingAudio(
+                GlassesConstant.AI_ASSISTANT_TYPE_LISTEN_MODE_SIMULTANEOUS_INTERPRETATION
+            )
+            realTimeSessionActive = false
+        }
+        mediaPlayer?.release()
+        mediaPlayer = null
+        super.onCleared()
     }
 }
