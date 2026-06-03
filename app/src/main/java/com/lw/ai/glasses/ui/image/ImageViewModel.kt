@@ -55,7 +55,6 @@ class ImageViewModel @Inject constructor(
 
     init {
         observeGlassesEvents()
-        GlassesManage.getDeviceSupportedFeatures()
     }
 
     fun onEvent(event: ImageUiEvent) {

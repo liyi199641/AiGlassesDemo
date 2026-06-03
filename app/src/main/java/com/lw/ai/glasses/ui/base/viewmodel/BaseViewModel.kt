@@ -45,14 +45,14 @@ abstract class BaseViewModel : ViewModel() {
                             onEmpty()
                         } else {
                             result.data?.let { onSuccess(it) }
-                            ?: run {
-                                _isEmpty.value = true
-                                onEmpty()
-                                LogUtils.dTag(
-                                    TAG,
-                                    "Data was null in Success but not considered empty by checkEmptyCondition."
-                                )
-                            }
+                                ?: run {
+                                    _isEmpty.value = true
+                                    onEmpty()
+                                    LogUtils.dTag(
+                                        TAG,
+                                        "Data was null in Success but not considered empty by checkEmptyCondition."
+                                    )
+                                }
                         }
                     }
 

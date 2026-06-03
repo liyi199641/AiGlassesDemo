@@ -34,7 +34,7 @@ class LinWearApplication : Application(){
             setFilePrefix("AiGlass")
         }
 
-        val clientkey = "xxx" // 需要到开发者网站申请并替换
+        val clientkey = "aw21acpmg1c718rd" // 需要到开发者网站申请并替换
         DouYinOpenApiFactory.init(DouYinOpenConfig(clientkey))
 
         setupRxJavaErrorHandler()

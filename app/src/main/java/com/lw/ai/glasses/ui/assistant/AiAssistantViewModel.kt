@@ -1,6 +1,6 @@
 package com.lw.ai.glasses.ui.assistant
 
-import android.content.Context
+import com.lw.ai.glasses.ui.base.viewmodel.BaseViewModel
 import androidx.lifecycle.viewModelScope
 import com.blankj.utilcode.util.LogUtils
 import com.fission.wear.glasses.sdk.GlassesManage
@@ -10,13 +10,12 @@ import com.fission.wear.glasses.sdk.data.dto.AiChatMessageDTO
 import com.fission.wear.glasses.sdk.data.dto.AiContentType
 import com.fission.wear.glasses.sdk.data.model.McpScheduleData
 import com.fission.wear.glasses.sdk.events.AgentEvent
+import com.lw.ai.glasses.state.WsConnectionStateManager
 import com.fission.wear.glasses.sdk.events.AudioStateEvent
 import com.fission.wear.glasses.sdk.events.CmdResultEvent
-import com.lw.ai.glasses.ui.base.viewmodel.BaseViewModel
 import com.lw.top.lib_core.data.local.entity.AiAssistantEntity
 import com.lw.top.lib_core.data.repository.AiAssistantRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
-import dagger.hilt.android.qualifiers.ApplicationContext
 import jakarta.inject.Inject
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -24,13 +23,14 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.io.File
 
 @HiltViewModel
 class AiAssistantViewModel @Inject constructor(
     private val repository: AiAssistantRepository,
-    @ApplicationContext private val context: Context
+    private val wsConnectionStateManager: WsConnectionStateManager,
 ) : BaseViewModel() {
     private val _uiState = MutableStateFlow(AiAssistantUiState())
     val uiState: StateFlow<AiAssistantUiState> = _uiState
@@ -83,7 +83,14 @@ class AiAssistantViewModel @Inject constructor(
     }
 
     init {
+        _uiState.update {
+            it.copy(
+                agentAudioPlaybackEnabled = AiAssistantClient.getInstance()
+                    .isAgentAudioPlaybackEnabled(),
+            )
+        }
         loadHistoryMessages()
+        observeGlobalWsConnectionState()
         observeGlassesEvents()
 //
 //        viewModelScope.launch {
@@ -112,12 +119,31 @@ class AiAssistantViewModel @Inject constructor(
         }
     }
 
+    /** 切换 AI 对话回复音频自动播放。 */
+    fun toggleAgentAudioPlayback() {
+        val enabled = !_uiState.value.agentAudioPlaybackEnabled
+        AiAssistantClient.getInstance().setAgentAudioPlaybackEnabled(enabled)
+        _uiState.update { it.copy(agentAudioPlaybackEnabled = enabled) }
+    }
+
 //    fun stopVadAudio(){
 //        viewModelScope.launch {
 //            GlassesManage.stopVadAudio()
 //        }
 //    }
 
+
+    private fun observeGlobalWsConnectionState() {
+        viewModelScope.launch {
+            wsConnectionStateManager.state.collect { ws ->
+                _uiState.update { it.copy(wsConnection = ws) }
+            }
+        }
+    }
+
+    fun reconnectWebSocket() {
+        wsConnectionStateManager.manualReconnect()
+    }
 
     private fun observeGlassesEvents() {
 
@@ -196,43 +222,88 @@ class AiAssistantViewModel @Inject constructor(
         val answerText = anyToStringSafe(result.answer)
         if (questionText.isEmpty() && answerText.isEmpty() && !result.isFinished) return
 
-        currentMessage = if (currentMessage != null) {
-            currentMessage!!.copy(
-                // STT 流式返回的是整句快照（如 你几 -> 你几岁了），每次应替换而非拼接
-                question = if (questionText.isNotEmpty()) questionText else currentMessage!!.question,
-                answer = if (answerText.isNotEmpty()) currentMessage!!.answer + answerText else currentMessage!!.answer,
-                questionType = if (questionText.isNotEmpty()) mapContentType(result.questionType) else currentMessage!!.questionType,
-                answerType = if (answerText.isNotEmpty()) mapContentType(result.answerType) else currentMessage!!.answerType,
-                timestamp = currentMessage!!.timestamp
-            )
-        } else {
-            AiAssistantEntity(
-                question = questionText,
-                questionType = mapContentType(result.questionType),
-                answer = answerText,
-                answerType = mapContentType(result.answerType),
-                timestamp = System.currentTimeMillis()
-            )
-        }
-
-
         val newList = _uiState.value.messages.toMutableList()
-        val index = newList.indexOfFirst { it.timestamp == currentMessage!!.timestamp }
-        if (index >= 0) {
-            newList[index] = currentMessage!!
-        } else if (questionText.isNotEmpty() || answerText.isNotEmpty()) {
-            newList.add(0, currentMessage!!)
-        }
-        _uiState.value = _uiState.value.copy(
-            messages = newList,
-            streamingMessageId = currentMessage!!.hashCode().toLong()
-        )
-        if (result.isFinished) {
-            if (currentMessage!!.question.isNotEmpty() || currentMessage!!.answer.isNotEmpty()) {
-                repository.insertMessage(currentMessage!!)
+
+        when {
+            questionText.isNotEmpty() -> {
+                // 问题与回答分行：带 question 的事件绝不写入正在流式的 answer 行
+                if (currentMessage?.answer?.isNotEmpty() == true) {
+                    finalizeCurrentMessage(newList)
+                }
+                currentMessage = if (currentMessage?.answer.isNullOrEmpty() && currentMessage?.question?.isNotEmpty() == true) {
+                    // 同一条 STT 流式快照（整句替换）
+                    currentMessage!!.copy(
+                        question = questionText,
+                        questionType = mapContentType(result.questionType),
+                    )
+                } else {
+                    AiAssistantEntity(
+                        question = questionText,
+                        questionType = mapContentType(result.questionType),
+                        answer = "",
+                        answerType = "",
+                        timestamp = System.currentTimeMillis(),
+                    )
+                }
             }
-            _uiState.value = _uiState.value.copy(streamingMessageId = null)
+
+            answerText.isNotEmpty() -> {
+                // 回答只追加到 answer 行；若当前是仅问题行，则新开一行
+                if (currentMessage?.question?.isNotEmpty() == true && currentMessage!!.answer.isEmpty()) {
+                    finalizeCurrentMessage(newList)
+                }
+                currentMessage = if (currentMessage != null) {
+                    currentMessage!!.copy(
+                        answer = currentMessage!!.answer + answerText,
+                        answerType = mapContentType(result.answerType),
+                    )
+                } else {
+                    AiAssistantEntity(
+                        question = "",
+                        questionType = "",
+                        answer = answerText,
+                        answerType = mapContentType(result.answerType),
+                        timestamp = System.currentTimeMillis(),
+                    )
+                }
+            }
+        }
+
+        currentMessage?.let { message ->
+            upsertMessageInList(newList, message)
+            _uiState.value = _uiState.value.copy(
+                messages = newList,
+                streamingMessageId = message.hashCode().toLong(),
+            )
+        }
+
+        if (result.isFinished) {
+            currentMessage?.let { finalizeCurrentMessage(newList) }
+            _uiState.value = _uiState.value.copy(
+                messages = newList,
+                streamingMessageId = null,
+            )
             currentMessage = null
+        }
+    }
+
+    private suspend fun finalizeCurrentMessage(list: MutableList<AiAssistantEntity>) {
+        val message = currentMessage ?: return
+        if (message.question.isEmpty() && message.answer.isEmpty()) {
+            currentMessage = null
+            return
+        }
+        repository.insertMessage(message)
+        upsertMessageInList(list, message)
+        currentMessage = null
+    }
+
+    private fun upsertMessageInList(list: MutableList<AiAssistantEntity>, message: AiAssistantEntity) {
+        val index = list.indexOfFirst { it.timestamp == message.timestamp }
+        if (index >= 0) {
+            list[index] = message
+        } else {
+            list.add(0, message)
         }
     }
 

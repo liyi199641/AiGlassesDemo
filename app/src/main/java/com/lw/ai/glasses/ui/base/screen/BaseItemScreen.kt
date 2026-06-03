@@ -1,4 +1,5 @@
 package com.lw.ai.glasses.ui.base.screen
+import com.lw.ai.glasses.ui.theme.components.AppAsyncImage
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Row
@@ -17,7 +18,6 @@ import com.lw.ai.glasses.ui.base.data.AppItemType
 import com.lw.ai.glasses.ui.theme.TextPrimary
 import com.lw.ai.glasses.ui.theme.TextRed
 import com.lw.ai.glasses.ui.theme.TextSecondary
-import com.lw.ai.glasses.ui.theme.components.AppAsyncImage
 import com.lw.ai.glasses.ui.theme.components.AppIcon
 import com.lw.ai.glasses.ui.theme.components.AppText
 

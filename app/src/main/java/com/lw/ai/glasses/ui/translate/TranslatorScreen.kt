@@ -32,6 +32,7 @@ import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SwapHoriz
+import androidx.compose.material.icons.filled.VolumeOff
 import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
@@ -64,6 +65,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.lw.ai.glasses.R
+import com.lw.ai.glasses.ui.common.WsConnectionStatusBar
 import com.lw.top.lib_core.data.local.entity.TranslationMessageEntity
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -78,8 +80,13 @@ fun TranslatorScreen(
     var isSelectingSource by remember { mutableStateOf(true) }
 
     // 将历史记录中的所有片段平铺展示
-    val allMessages = remember(uiState.history) {
-        uiState.history.flatMap { it.messages }.sortedByDescending { it.timestamp }
+    val allMessages = remember(uiState.history, uiState.currentMode) {
+        val flat = uiState.history.flatMap { it.messages }
+        if (uiState.currentMode == TranslationMode.REAL_TIME) {
+            flat.dedupeRealTimeByRequestId()
+        } else {
+            flat.sortedByDescending { it.timestamp }
+        }
     }
 
     // 1. 创建 LazyListState
@@ -96,7 +103,16 @@ fun TranslatorScreen(
         AlertDialog(
             onDismissRequest = { showClearDialog = false },
             title = { Text(stringResource(R.string.clear_records)) },
-            text = { Text(stringResource(R.string.clear_translation_history_message)) },
+            text = {
+                Text(
+                    stringResource(
+                        when (uiState.currentMode) {
+                            TranslationMode.REAL_TIME -> R.string.clear_real_time_translation_history_message
+                            TranslationMode.DIALOGUE -> R.string.clear_dialogue_translation_history_message
+                        },
+                    ),
+                )
+            },
             confirmButton = {
                 TextButton(
                     onClick = {
@@ -150,10 +166,12 @@ fun TranslatorScreen(
                     isRealTimeSessionActive = uiState.isRealTimeSessionActive,
                     currentMode = uiState.currentMode,
                     currentAmplitude = uiState.currentAmplitude,
+                    translationAudioPlaybackEnabled = uiState.translationAudioPlaybackEnabled,
                     onStartRecording = { viewModel.startRecording() },
                     onStopRecording = { viewModel.stopRecording() },
                     onToggleRealTimeRecording = { viewModel.toggleRealTimeRecording() },
                     onEndRealTimeRecording = { viewModel.endRealTimeRecording() },
+                    onToggleTranslationAudioPlayback = { viewModel.toggleTranslationAudioPlayback() },
                 )
             }
         }
@@ -163,6 +181,13 @@ fun TranslatorScreen(
                 .padding(paddingValues)
                 .fillMaxSize()
         ) {
+            WsConnectionStatusBar(
+                state = uiState.wsConnection,
+                onReconnect = viewModel::reconnectWebSocket,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+            )
             LanguageTopBar(
                 srcLang = uiState.srcLang,
                 targetLang = uiState.targetLang,
@@ -192,13 +217,20 @@ fun TranslatorScreen(
             ) {
                 items(
                     items = allMessages,
-                    key = { it.requestId + it.messageId } // 复合主键作为唯一标识
+                    key = {
+                        if (uiState.currentMode == TranslationMode.REAL_TIME) {
+                            it.requestId
+                        } else {
+                            it.requestId + it.messageId
+                        }
+                    }
                 ) { message ->
                     TranslationItemCard(
                         item = message,
+                        currentMode = uiState.currentMode,
                         onPlayAudio = { audioPath ->
                             viewModel.playAudio(audioPath)
-                        }
+                        },
                     )
                 }
             }
@@ -347,18 +379,22 @@ fun RecordControlPanel(
     isRealTimeSessionActive: Boolean,
     currentMode: TranslationMode,
     currentAmplitude: Float,
+    translationAudioPlaybackEnabled: Boolean,
     onStartRecording: () -> Unit,
     onStopRecording: () -> Unit,
     onToggleRealTimeRecording: () -> Unit,
     onEndRealTimeRecording: () -> Unit,
+    onToggleTranslationAudioPlayback: () -> Unit,
 ) {
     if (currentMode == TranslationMode.REAL_TIME) {
         RealTimeRecordControlPanel(
             isRecording = isRecording,
             isRealTimeSessionActive = isRealTimeSessionActive,
             currentAmplitude = currentAmplitude,
+            translationAudioPlaybackEnabled = translationAudioPlaybackEnabled,
             onToggleRecording = onToggleRealTimeRecording,
             onEndRecording = onEndRealTimeRecording,
+            onToggleTranslationAudioPlayback = onToggleTranslationAudioPlayback,
         )
     } else {
         DialogueRecordControlPanel(
@@ -376,8 +412,10 @@ private fun RealTimeRecordControlPanel(
     isRecording: Boolean,
     isRealTimeSessionActive: Boolean,
     currentAmplitude: Float,
+    translationAudioPlaybackEnabled: Boolean,
     onToggleRecording: () -> Unit,
     onEndRecording: () -> Unit,
+    onToggleTranslationAudioPlayback: () -> Unit,
 ) {
     val pressScale by animateFloatAsState(
         targetValue = if (isRecording) 1.1f else 1.0f,
@@ -412,6 +450,33 @@ private fun RealTimeRecordControlPanel(
             .padding(vertical = 24.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
+        FilterChip(
+            selected = translationAudioPlaybackEnabled,
+            onClick = onToggleTranslationAudioPlayback,
+            label = {
+                Text(
+                    text = if (translationAudioPlaybackEnabled) {
+                        stringResource(R.string.translation_audio_playback_on)
+                    } else {
+                        stringResource(R.string.translation_audio_playback_off)
+                    },
+                )
+            },
+            leadingIcon = {
+                Icon(
+                    imageVector = if (translationAudioPlaybackEnabled) {
+                        Icons.Default.VolumeUp
+                    } else {
+                        Icons.Default.VolumeOff
+                    },
+                    contentDescription = stringResource(R.string.toggle_translation_audio_playback),
+                    modifier = Modifier.size(18.dp),
+                )
+            },
+        )
+
+        Spacer(modifier = Modifier.height(12.dp))
+
         Box(
             contentAlignment = Alignment.Center,
             modifier = Modifier.size(120.dp)
@@ -565,7 +630,8 @@ private fun DialogueRecordControlPanel(
 @Composable
 fun TranslationItemCard(
     item: TranslationMessageEntity,
-    onPlayAudio: (String) -> Unit
+    currentMode: TranslationMode,
+    onPlayAudio: (String) -> Unit,
 ) {
     Card(
         modifier = Modifier
@@ -599,23 +665,24 @@ fun TranslationItemCard(
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween,
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth(),
             ) {
                 Text(
                     text = item.translatedText.ifEmpty { stringResource(R.string.translating) },
                     style = MaterialTheme.typography.titleMedium,
                     color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier.weight(1f),
                 )
 
-                if (!item.audioPath.isNullOrEmpty() && item.isFinished) {
-                    IconButton(
-                        onClick = { onPlayAudio(item.audioPath!!) }
-                    ) {
+                if (
+                    currentMode == TranslationMode.DIALOGUE &&
+                    !item.audioPath.isNullOrEmpty()
+                ) {
+                    IconButton(onClick = { onPlayAudio(item.audioPath!!) }) {
                         Icon(
                             imageVector = Icons.Default.VolumeUp,
                             contentDescription = stringResource(R.string.play_audio),
-                            tint = MaterialTheme.colorScheme.primary
+                            tint = MaterialTheme.colorScheme.primary,
                         )
                     }
                 }

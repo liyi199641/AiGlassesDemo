@@ -9,15 +9,19 @@ import com.blankj.utilcode.util.LogUtils
 import com.fission.wear.glasses.sdk.AiAssistantClient
 import com.fission.wear.glasses.sdk.GlassesManage
 import com.fission.wear.glasses.sdk.config.AiAgentConfig
+import com.fission.wear.glasses.sdk.config.AiServerEnvironmentConfig
 import com.fission.wear.glasses.sdk.config.BleComConfig
 import com.fission.wear.glasses.sdk.config.SdkConfig
 import com.fission.wear.glasses.sdk.constant.GlassesConstant
 import com.fission.wear.glasses.sdk.events.CmdResultEvent
 import com.fission.wear.glasses.sdk.events.ConnectionStateEvent
 import com.fission.wear.glasses.sdk.events.ScanStateEvent
+import com.lw.ai.glasses.config.AiAssistantConnectionHelper
+import com.lw.ai.glasses.config.AppConfigLoader
+import com.lw.ai.glasses.config.SdkChannelResolver
 import com.lw.ai.glasses.service.AiAssistantService
+import com.lw.ai.glasses.state.WsConnectionStateManager
 import com.lw.ai.glasses.ui.home.ConnectionState
-import com.lw.ai.glasses.utils.toPersistedEnvironmentOrDefault
 import com.lw.top.lib_core.data.datastore.AppDataManager
 import com.lw.top.lib_core.data.datastore.BluetoothDataManager
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -33,19 +37,29 @@ import kotlinx.coroutines.launch
 class AppStartupReconnectManager @Inject constructor(
     @ApplicationContext private val context: Context,
     private val bluetoothDataManager: BluetoothDataManager,
-    private val appDataManager: AppDataManager
+    private val appDataManager: AppDataManager,
+    private val wsConnectionStateManager: WsConnectionStateManager,
 ) {
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val started = AtomicBoolean(false)
-    private val channel = GlassesConstant.ChannelType.LY
+    private var restoredLocalEnvironmentConfig: AiServerEnvironmentConfig? = null
 
     fun start() {
         if (!started.compareAndSet(false, true)) return
 
+        wsConnectionStateManager.start()
         observeGlassesEvents()
         appScope.launch {
             val environment = restoreSavedEnvironment()
-            initGlassesSdkAndAiClient(environment)
+            val savedAddress = bluetoothDataManager.getBluetoothAddress()
+            val savedName = bluetoothDataManager.getBluetoothName()
+            val isDeviceBound = !savedAddress.isNullOrBlank() && !savedName.isNullOrBlank()
+            val channel = SdkChannelResolver.loadSaved(appDataManager)
+            if (isDeviceBound) {
+                initGlassesSdkAndAiClient(environment, channel)
+            } else {
+                initAiClientOnly(environment, channel)
+            }
             autoReconnectLastDevice()
         }
     }
@@ -64,7 +78,12 @@ class AppStartupReconnectManager @Inject constructor(
                         GlassesManage.setVoiceWakeUp(true, true)
                         GlassesManage.getBatteryLevel()
                         GlassesManage.getMediaFileCount()
-                        connectAiAssistant()
+                        appScope.launch {
+                            AiAssistantConnectionHelper.connectIfEnabled(
+                                appDataManager,
+                                bluetoothDataManager,
+                            )
+                        }
                         GlassesManage.getActionState()
                     }
 
@@ -86,29 +105,53 @@ class AppStartupReconnectManager @Inject constructor(
     }
 
     private suspend fun restoreSavedEnvironment(): GlassesConstant.ServerEnvironment {
+        val savedLocalBaseUrl = appDataManager.getLocalEnvironmentBaseUrl()
         val savedLocalWsUrl = appDataManager.getLocalEnvironmentWsUrl()
         val savedEnvName = appDataManager.getEnvironment()
 
         val environment = savedEnvName
-            ?.let { name -> runCatching { GlassesConstant.ServerEnvironment.valueOf(name) }.getOrNull() }
-            ?.toPersistedEnvironmentOrDefault()
+            ?.let { name ->
+                runCatching { GlassesConstant.ServerEnvironment.valueOf(name) }.getOrNull()
+                    ?.let(AppConfigLoader::sanitizeSelectableEnvironment)
+            }
             ?: GlassesConstant.ServerEnvironment.entries.firstOrNull {
-                it.wsUrl == GlassesConstant.AI_ASSISTANT_BASE_WS_URL
+                it.wsUrl == GlassesConstant.AI_ASSISTANT_BASE_WS_URL &&
+                    !GlassesConstant.isVendorDirectEnvironment(it)
             }
             ?: GlassesConstant.ServerEnvironment.DEV
 
-        AiAssistantClient.applyServerEnvironmentToGlobals(environment, savedLocalWsUrl)
+        if (environment == GlassesConstant.ServerEnvironment.LOCAL) {
+            restoredLocalEnvironmentConfig = AiServerEnvironmentConfig(
+                baseUrl = savedLocalBaseUrl ?: GlassesConstant.ServerEnvironment.LOCAL.baseUrl,
+                wsUrl = savedLocalWsUrl ?: GlassesConstant.ServerEnvironment.LOCAL.wsUrl,
+            )
+            AiAssistantClient.getInstance().applyServerEnvironmentToGlobals(restoredLocalEnvironmentConfig!!)
+        } else {
+            restoredLocalEnvironmentConfig = null
+            AiAssistantClient.getInstance().applyServerEnvironmentToGlobals(environment, savedLocalWsUrl)
+        }
         return environment
     }
 
-    private fun initGlassesSdkAndAiClient(environment: GlassesConstant.ServerEnvironment) {
+    private fun initGlassesSdkAndAiClient(
+        environment: GlassesConstant.ServerEnvironment,
+        channel: GlassesConstant.ChannelType,
+    ) {
         GlassesManage.initialize(SdkConfig(true, context, channel, LogUtils.V))
+        initAiClientOnly(environment, channel)
+    }
+
+    private fun initAiClientOnly(
+        environment: GlassesConstant.ServerEnvironment,
+        channel: GlassesConstant.ChannelType,
+    ) {
         AiAssistantClient.getInstance().initializeAiClient(
             AiAgentConfig(
                 context = context,
                 channel = channel,
                 aiModelType = GlassesConstant.AiModelVendor.DEFAULT,
                 serverEnvironment = environment,
+                customServerEnvironment = restoredLocalEnvironmentConfig,
             )
         )
     }

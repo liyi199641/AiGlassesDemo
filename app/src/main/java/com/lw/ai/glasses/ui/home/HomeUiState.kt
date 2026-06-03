@@ -12,7 +12,6 @@ import androidx.compose.material.icons.filled.VideoCall
 import androidx.annotation.StringRes
 import androidx.compose.material.icons.filled.Functions
 import androidx.compose.ui.graphics.vector.ImageVector
-import com.fission.wear.glasses.sdk.constant.GlassesConstant
 import com.lw.ai.glasses.R
 enum class ConnectionState(val value: Int) {
     IDLE(0),
@@ -27,15 +26,24 @@ enum class ConnectionState(val value: Int) {
     }
 }
 
+enum class BtConnectionState {
+    IDLE,
+    BONDING,
+    CONNECTING,
+    CONNECTED,
+    FAILED,
+    DISCONNECTED,
+}
+
 data class HomeUiState(
     val isScanning: Boolean = false,
     val connectionState: ConnectionState = ConnectionState.IDLE,
+    val btConnectionState: BtConnectionState = BtConnectionState.IDLE,
+    val btFailureReason: String? = null,
     val batteryLevel: Int = -1,
     val isCharging: Boolean? = null,
     val connectedDeviceName: String? = null,
     val pendingSyncPhotosCount: Int = 0,
-    val selectedEnvironment: GlassesConstant.ServerEnvironment = GlassesConstant.ServerEnvironment.DEV,
-    val localEnvironmentWsUrl: String = GlassesConstant.ServerEnvironment.LOCAL.wsUrl,
     val features: List<Feature> = emptyList()
 ) {
     companion object {

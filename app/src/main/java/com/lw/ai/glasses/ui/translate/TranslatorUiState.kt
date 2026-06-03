@@ -1,6 +1,8 @@
 package com.lw.ai.glasses.ui.translate
 
+import com.lw.ai.glasses.ui.common.WsConnectionUiState
 import com.lw.top.lib_core.data.local.entity.TranslationMessageEntity
+import com.lw.top.lib_core.data.local.entity.TranslationSessionEntity
 import com.lw.top.lib_core.data.local.entity.TranslationWithMessages
 import kotlinx.serialization.Serializable
 
@@ -10,6 +12,11 @@ import kotlinx.serialization.Serializable
 enum class TranslationMode {
     REAL_TIME, // 实时翻译 (通常用于听讲座、看电影)
     DIALOGUE   // 对话翻译 (通常用于面对面交谈)
+}
+
+fun TranslationMode.toStorageKey(): String = when (this) {
+    TranslationMode.REAL_TIME -> TranslationSessionEntity.MODE_REAL_TIME
+    TranslationMode.DIALOGUE -> TranslationSessionEntity.MODE_DIALOGUE
 }
 
 data class TranslatorUiState(
@@ -26,7 +33,10 @@ data class TranslatorUiState(
     val srcLang: Language? = null,
     val targetLang: Language? = null,
     val currentMode: TranslationMode = TranslationMode.REAL_TIME,
-    val error: String? = null
+    /** 实时同传译文是否通过 SDK 自动播放。 */
+    val translationAudioPlaybackEnabled: Boolean = true,
+    val error: String? = null,
+    val wsConnection: WsConnectionUiState = WsConnectionUiState(),
 )
 
 @Serializable

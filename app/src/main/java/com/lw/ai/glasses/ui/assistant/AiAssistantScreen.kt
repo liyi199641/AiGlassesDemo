@@ -2,6 +2,7 @@ package com.lw.ai.glasses.ui.assistant
 
 import android.content.Intent
 import android.provider.CalendarContract
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -10,7 +11,9 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -18,10 +21,13 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.VolumeOff
+import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -48,6 +54,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
 import com.fission.wear.glasses.sdk.data.model.McpScheduleData
 import com.lw.ai.glasses.R
+import com.lw.ai.glasses.ui.common.WsConnectionStatusBar
 import com.lw.ai.glasses.ui.theme.components.TypewriterText
 import com.lw.top.lib_core.data.local.entity.AiAssistantEntity
 import kotlinx.coroutines.flow.collectLatest
@@ -111,13 +118,70 @@ fun AiAssistantScreen(
                 }
             )
         },
+        bottomBar = {
+            AgentAudioPlaybackToggle(
+                agentAudioPlaybackEnabled = uiState.agentAudioPlaybackEnabled,
+                onToggle = { viewModel.toggleAgentAudioPlayback() },
+            )
+        },
     ) { innerPadding ->
-        ConversationList(
-            messages = uiState.messages,
-            streamingMessageId = uiState.streamingMessageId,
+        Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(innerPadding)
+                .padding(innerPadding),
+        ) {
+            WsConnectionStatusBar(
+                state = uiState.wsConnection,
+                onReconnect = viewModel::reconnectWebSocket,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+            )
+            ConversationList(
+                messages = uiState.messages,
+                streamingMessageId = uiState.streamingMessageId,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
+    }
+}
+
+@Composable
+private fun AgentAudioPlaybackToggle(
+    agentAudioPlaybackEnabled: Boolean,
+    onToggle: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.surface)
+            .navigationBarsPadding()
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        horizontalArrangement = Arrangement.Center,
+    ) {
+        FilterChip(
+            selected = agentAudioPlaybackEnabled,
+            onClick = onToggle,
+            label = {
+                Text(
+                    text = if (agentAudioPlaybackEnabled) {
+                        stringResource(R.string.agent_audio_playback_on)
+                    } else {
+                        stringResource(R.string.agent_audio_playback_off)
+                    },
+                )
+            },
+            leadingIcon = {
+                Icon(
+                    imageVector = if (agentAudioPlaybackEnabled) {
+                        Icons.Default.VolumeUp
+                    } else {
+                        Icons.Default.VolumeOff
+                    },
+                    contentDescription = stringResource(R.string.toggle_agent_audio_playback),
+                    modifier = Modifier.size(18.dp),
+                )
+            },
         )
     }
 }

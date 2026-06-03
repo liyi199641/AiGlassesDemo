@@ -3,12 +3,13 @@ package com.lw.ai.glasses.ui.translate
 import com.lw.ai.glasses.ui.base.viewmodel.BaseViewModel
 import android.content.Context
 import androidx.lifecycle.viewModelScope
+import com.blankj.utilcode.util.LogUtils
 import com.fission.wear.glasses.sdk.GlassesManage
 import com.fission.wear.glasses.sdk.AiAssistantClient
 import com.fission.wear.glasses.sdk.constant.GlassesConstant
 import com.fission.wear.glasses.sdk.events.AiTranslationEvent
+import com.lw.ai.glasses.state.WsConnectionStateManager
 import com.fission.wear.glasses.sdk.events.AudioStateEvent
-import com.fission.wear.glasses.sdk.events.CmdResultEvent
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import com.lw.top.lib_core.data.local.entity.TranslationMessageEntity
@@ -21,11 +22,11 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.filterIsInstance
-import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withTimeoutOrNull
 import javax.inject.Inject
 import kotlin.math.log10
 import kotlin.math.sqrt
@@ -35,16 +36,17 @@ import kotlin.math.sqrt
 class TranslatorViewModel @Inject constructor(
     private val repository: TranslationRepository,
     @ApplicationContext private val context: Context,
+    private val wsConnectionStateManager: WsConnectionStateManager,
 ) : BaseViewModel() {
 
     private val _uiState = MutableStateFlow(TranslatorUiState())
     val uiState = _uiState.asStateFlow()
     private val streamRecorder = StreamAudioRecorder(context)
     private var mediaPlayer: android.media.MediaPlayer? = null
-    /** 进入翻译页前设备的本地离线语音启用状态，用于离开时仅恢复 Opus 推送开关。 */
-    private var localOfflineVoiceEnabled = true
     /** 实时翻译会话是否仍在进行（松手仅暂停，不结束）。 */
     private var realTimeSessionActive = false
+    /** 记录 requestId 对应的翻译模式，避免切换 Tab 后写入错误分类。 */
+    private val requestIdToMode = mutableMapOf<String, String>()
 
     init {
         disableOpusStreamPushForTranslation()
@@ -52,13 +54,20 @@ class TranslatorViewModel @Inject constructor(
         loadLanguages()
 
         viewModelScope.launch {
-            // 订阅所有会话及消息
-            repository.getAllSessionsWithMessagesFlow().collect { sessionsWithMessages ->
-                _uiState.update { state ->
-                    state.copy(history = sessionsWithMessages)
+            uiState
+                .map { it.currentMode.toStorageKey() }
+                .distinctUntilChanged()
+                .flatMapLatest { mode ->
+                    repository.getSessionsWithMessagesByModeFlow(mode)
                 }
-            }
+                .collect { sessionsWithMessages ->
+                    _uiState.update { state ->
+                        state.copy(history = sessionsWithMessages)
+                    }
+                }
         }
+
+        observeGlobalWsConnectionState()
 
         viewModelScope.launch {
             AiAssistantClient.getInstance().aiAgentEventFlow().collect { events ->
@@ -69,42 +78,85 @@ class TranslatorViewModel @Inject constructor(
                     is AiTranslationEvent.AiTranslationResult -> {
                         val result = events.data
                         val requestId = result.id ?: return@collect
-                        val msgId = result.messageId ?: return@collect
 
                         viewModelScope.launch {
+                            val translationMode = requestIdToMode[requestId]
+                                ?: _uiState.value.currentMode.toStorageKey()
+                            val isRealTime =
+                                translationMode == TranslationSessionEntity.MODE_REAL_TIME
+
+                            if (!isRealTime && result.messageId.isNullOrBlank()) return@launch
+
                             // 1. 确保 Session 存在
                             repository.insertSession(
                                 TranslationSessionEntity(
                                     requestId = requestId,
                                     sourceLang = uiState.value.srcLang?.name ?: "",
-                                    targetLang = uiState.value.targetLang?.name ?: ""
+                                    targetLang = uiState.value.targetLang?.name ?: "",
+                                    translationMode = translationMode,
                                 )
                             )
 
-                            // 2. 获取现有的消息片段（必须同时匹配 requestId 和 messageId）
-                            val existing = repository.getMessageById(requestId, msgId)
-
-                            // 3. 构建新的实体：采用非空覆盖逻辑
-                            val newEntity = if (existing != null) {
-                                existing.copy(
-                                    originalText = result.originalText ?: existing.originalText,
-                                    translatedText = result.translatedText ?: existing.translatedText,
-                                    audioPath = result.translatedFileUrl ?: existing.audioPath,
-                                    isFinished = result.isFinished
+                            if (isRealTime) {
+                                // 实时翻译：仅以 requestId 标识一句话，忽略后台 messageId
+                                val segmentMessageId =
+                                    TranslationSessionEntity.REAL_TIME_SEGMENT_MESSAGE_ID
+                                val existing = mergeRealTimeSegments(
+                                    repository.getMessagesByRequestId(requestId),
                                 )
+
+                                val newEntity = if (existing != null) {
+                                    existing.copy(
+                                        messageId = segmentMessageId,
+                                        originalText = mergeRealTimeTranslationText(
+                                            existing = existing.originalText,
+                                            incoming = result.originalText,
+                                            incomingIsFinished = result.isFinished,
+                                            existingIsFinished = existing.isFinished,
+                                        ),
+                                        translatedText = mergeRealTimeTranslationText(
+                                            existing = existing.translatedText,
+                                            incoming = result.translatedText,
+                                            incomingIsFinished = result.isFinished,
+                                            existingIsFinished = existing.isFinished,
+                                        ),
+                                        audioPath = result.translatedFileUrl ?: existing.audioPath,
+                                        isFinished = result.isFinished || existing.isFinished,
+                                    )
+                                } else {
+                                    TranslationMessageEntity(
+                                        messageId = segmentMessageId,
+                                        requestId = requestId,
+                                        originalText = result.originalText ?: "",
+                                        translatedText = result.translatedText ?: "",
+                                        audioPath = result.translatedFileUrl,
+                                        isFinished = result.isFinished,
+                                    )
+                                }
+                                repository.upsertRealTimeMessage(newEntity)
                             } else {
-                                TranslationMessageEntity(
-                                    messageId = msgId,
-                                    requestId = requestId,
-                                    originalText = result.originalText ?: "",
-                                    translatedText = result.translatedText ?: "",
-                                    audioPath = result.translatedFileUrl,
-                                    isFinished = result.isFinished
-                                )
+                                // 对话翻译：保持 (requestId, messageId) 复合主键
+                                val msgId = result.messageId!!
+                                val existing = repository.getMessageById(requestId, msgId)
+                                val newEntity = if (existing != null) {
+                                    existing.copy(
+                                        originalText = result.originalText ?: existing.originalText,
+                                        translatedText = result.translatedText ?: existing.translatedText,
+                                        audioPath = result.translatedFileUrl ?: existing.audioPath,
+                                        isFinished = result.isFinished,
+                                    )
+                                } else {
+                                    TranslationMessageEntity(
+                                        messageId = msgId,
+                                        requestId = requestId,
+                                        originalText = result.originalText ?: "",
+                                        translatedText = result.translatedText ?: "",
+                                        audioPath = result.translatedFileUrl,
+                                        isFinished = result.isFinished,
+                                    )
+                                }
+                                repository.insertMessage(newEntity)
                             }
-
-                            // 4. 插入或流式更新数据库
-                            repository.insertMessage(newEntity)
                         }
                     }
                     else -> {}
@@ -113,18 +165,22 @@ class TranslatorViewModel @Inject constructor(
         }
     }
 
+    private fun observeGlobalWsConnectionState() {
+        viewModelScope.launch {
+            wsConnectionStateManager.state.collect { ws ->
+                _uiState.update { it.copy(wsConnection = ws) }
+            }
+        }
+    }
+
+    fun reconnectWebSocket() {
+        wsConnectionStateManager.manualReconnect()
+    }
+
     private fun disableOpusStreamPushForTranslation() {
         viewModelScope.launch {
-            val voiceState = withTimeoutOrNull(3_000) {
-                GlassesManage.getVoiceWakeUp()
-                GlassesManage.eventFlow()
-                    .filterIsInstance<CmdResultEvent.VoiceCommandDisableState>()
-                    .first()
-            }
-            localOfflineVoiceEnabled =
-                voiceState?.let { !it.localOfflineVoiceDisabled } ?: localOfflineVoiceEnabled
             GlassesManage.setVoiceWakeUp(
-                localOfflineEnabled = localOfflineVoiceEnabled,
+                localOfflineEnabled = false,
                 opusPushEnabled = false,
             )
         }
@@ -132,7 +188,7 @@ class TranslatorViewModel @Inject constructor(
 
     private fun restoreOpusStreamPushAfterTranslation() {
         GlassesManage.setVoiceWakeUp(
-            localOfflineEnabled = localOfflineVoiceEnabled,
+            localOfflineEnabled = true,
             opusPushEnabled = true,
         )
     }
@@ -170,12 +226,26 @@ class TranslatorViewModel @Inject constructor(
     }
 
     fun setTranslationMode(mode: TranslationMode) {
-        if (_uiState.value.currentMode == TranslationMode.REAL_TIME &&
-            mode == TranslationMode.DIALOGUE
-        ) {
-            endRealTimeSession()
+        when {
+            _uiState.value.currentMode == TranslationMode.REAL_TIME &&
+                mode == TranslationMode.DIALOGUE -> endRealTimeSession()
+            _uiState.value.currentMode == TranslationMode.DIALOGUE &&
+                mode == TranslationMode.REAL_TIME -> endDialogueReceivingSession()
         }
         _uiState.update { it.copy(currentMode = mode) }
+    }
+
+    /** 切到实时翻译前结束对话翻译 listen，避免未完成分片在实时同传下行被误 supersede。 */
+    private fun endDialogueReceivingSession() {
+        viewModelScope.launch {
+            if (_uiState.value.isRecording) {
+                streamRecorder.stop()
+                _uiState.update { it.copy(isRecording = false, currentAmplitude = 0f) }
+            }
+            AiAssistantClient.getInstance().stopReceivingAudio(
+                GlassesConstant.AI_ASSISTANT_TYPE_LISTEN_MODE_TRANSLATION,
+            )
+        }
     }
 
     fun swapLanguages() {
@@ -198,20 +268,28 @@ class TranslatorViewModel @Inject constructor(
                 TranslationMode.REAL_TIME -> {
                     if (!realTimeSessionActive) {
                         val requestId = System.currentTimeMillis()
+                        registerTranslationRequest(requestId, TranslationMode.REAL_TIME)
                         AiAssistantClient.getInstance().startAiTranslation(
                             uiState.value.srcLang?.langType!!,
                             listOf(uiState.value.targetLang?.langType!!),
                             requestId,
-                            audioFormat = GlassesConstant.AI_TRANSLATION_AUDIO_FORMAT_RAW_PCM,
+                            audioFormat = GlassesConstant.AI_TRANSLATION_AUDIO_FORMAT_RAW_PCM
                         )
                         realTimeSessionActive = true
-                        _uiState.update { it.copy(isRealTimeSessionActive = true) }
+                        _uiState.update {
+                            it.copy(
+                                isRealTimeSessionActive = true,
+                                translationAudioPlaybackEnabled = true,
+                            )
+                        }
                         delay(100)
                     }
+                    AiAssistantClient.getInstance().setTranslationAudioPlaybackEnabled(_uiState.value.translationAudioPlaybackEnabled)
                     AiAssistantClient.getInstance().startReceivingAudio(modeStr, 140)
                 }
                 TranslationMode.DIALOGUE -> {
                     val requestId = System.currentTimeMillis()
+                    registerTranslationRequest(requestId, TranslationMode.DIALOGUE)
                     AiAssistantClient.getInstance().startAiTranslation(
                         uiState.value.srcLang?.langType!!,
                         listOf(uiState.value.targetLang?.langType!!),
@@ -223,10 +301,11 @@ class TranslatorViewModel @Inject constructor(
                 }
             }
 
-            streamRecorder.start(fileName) { pcmData ->
+            streamRecorder.start(fileName = fileName) { pcmData ->
                 AiAssistantClient.getInstance().sendReceivingAudioData(modeStr, pcmData)
                 val amplitude = calculateRMS(pcmData)
                 _uiState.update { it.copy(currentAmplitude = amplitude) }
+                pcmData
             }
         }
     }
@@ -235,6 +314,7 @@ class TranslatorViewModel @Inject constructor(
         if (!_uiState.value.isRecording) return
         viewModelScope.launch {
             streamRecorder.stop()
+            clearSimultaneousCaptureSessionIfNeeded()
             _uiState.update { it.copy(isRecording = false, currentAmplitude = 0f) }
 
             when (_uiState.value.currentMode) {
@@ -256,16 +336,33 @@ class TranslatorViewModel @Inject constructor(
         }
     }
 
+    /** 实时翻译：切换译文自动播放。 */
+    fun toggleTranslationAudioPlayback() {
+        if (_uiState.value.currentMode != TranslationMode.REAL_TIME) return
+        val enabled = !_uiState.value.translationAudioPlaybackEnabled
+        AiAssistantClient.getInstance().setTranslationAudioPlaybackEnabled(enabled)
+        _uiState.update { it.copy(translationAudioPlaybackEnabled = enabled) }
+    }
+
     /** 实时翻译：长按结束整场会话。 */
     fun endRealTimeRecording() {
         if (_uiState.value.currentMode != TranslationMode.REAL_TIME) return
         endRealTimeSession()
     }
 
+    private fun clearSimultaneousCaptureSessionIfNeeded() {
+        if (_uiState.value.currentMode == TranslationMode.REAL_TIME) {
+            runCatching {
+                AiAssistantClient.getInstance().clearSimultaneousInterpretationCaptureSession()
+            }
+        }
+    }
+
     private fun endRealTimeSession() {
         viewModelScope.launch {
             if (_uiState.value.isRecording) {
                 streamRecorder.stop()
+                clearSimultaneousCaptureSessionIfNeeded()
             }
             if (realTimeSessionActive) {
                 AiAssistantClient.getInstance().stopReceivingAudio(
@@ -288,8 +385,12 @@ class TranslatorViewModel @Inject constructor(
                 realTimeSessionActive = false
                 _uiState.update { it.copy(isRealTimeSessionActive = false) }
             }
-            repository.clearAllTranslations()
+            repository.clearTranslationsByMode(_uiState.value.currentMode.toStorageKey())
         }
+    }
+
+    private fun registerTranslationRequest(requestId: Long, mode: TranslationMode) {
+        requestIdToMode[requestId.toString()] = mode.toStorageKey()
     }
 
     private fun listenModeFor(mode: TranslationMode): String = when (mode) {
@@ -335,6 +436,7 @@ class TranslatorViewModel @Inject constructor(
             runBlocking(Dispatchers.IO) {
                 try {
                     streamRecorder.stop()
+                    clearSimultaneousCaptureSessionIfNeeded()
                 } catch (_: Exception) {
                 }
             }
@@ -345,8 +447,6 @@ class TranslatorViewModel @Inject constructor(
             )
             realTimeSessionActive = false
         }
-        mediaPlayer?.release()
-        mediaPlayer = null
         super.onCleared()
     }
 }

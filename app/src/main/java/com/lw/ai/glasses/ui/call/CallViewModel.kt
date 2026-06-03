@@ -1,22 +1,33 @@
 package com.lw.ai.glasses.ui.call
 
 import com.lw.ai.glasses.ui.base.viewmodel.BaseViewModel
+import android.Manifest
 import android.content.Context
+import android.content.pm.PackageManager
+import android.util.Log
 import android.view.TextureView
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewModelScope
 import com.blankj.utilcode.util.LogUtils
 import com.blankj.utilcode.util.ToastUtils
 import com.fission.wear.glasses.sdk.AiAssistantClient
+import com.fission.wear.glasses.sdk.GlassesManage
 import com.fission.wear.glasses.sdk.events.AgentEvent
 import com.fission.wear.glasses.sdk.events.AiTranslationEvent
 import com.lw.ai.glasses.R
+import com.lw.ai.glasses.state.WsConnectionStateManager
 import com.lw.top.lib_core.data.datastore.BluetoothDataManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -41,35 +52,34 @@ data class TranslationMessage(
 @HiltViewModel
 class CallViewModel @Inject constructor(
     @ApplicationContext private val context: Context,
-    private val bluetoothDataManager: BluetoothDataManager
+    private val bluetoothDataManager: BluetoothDataManager,
+    private val wsConnectionStateManager: WsConnectionStateManager,
 ) : BaseViewModel() {
 
     private val _uiState = MutableStateFlow(CallUiState())
     val uiState: StateFlow<CallUiState> = _uiState.asStateFlow()
+    private val _requestAudioPermissionEvent = MutableSharedFlow<Unit>()
+    val requestAudioPermissionEvent = _requestAudioPermissionEvent.asSharedFlow()
 
     private var pendingLocalView: TextureView? = null
     private var pendingRemoteView: TextureView? = null
+    private var callDurationJob: Job? = null
 
     init {
-        viewModelScope.launch {
-            viewModelScope.launch {
-                AiAssistantClient.getInstance().aiAgentEventFlow().collect {
-                        event ->
-                    when (event) {
-                        is AiTranslationEvent.AiTranslationResult -> {
-                            handleStreamingTranslation(event.data)
-                        }
-                        else -> {
 
-                        }
-                    }
-                }
-            }
+        disableOpusStreamPushForTranslation()
+
+        observeGlobalWsConnectionState()
+
+        viewModelScope.launch {
             AiAssistantClient.getInstance().aiAgentEventFlow().collect { event ->
                 when (event) {
+                    is AiTranslationEvent.AiTranslationResult -> {
+                        handleStreamingTranslation(event.data)
+                    }
+
                     is AgentEvent.VoiceRoomParamsEvent -> {
                         val params = event.params
-                        LogUtils.d("创建房间成功：$params")
                         AiAssistantClient.getInstance().startCall(
                             appID = params.appId.toLong(),
                             token = params.appToken,
@@ -90,11 +100,13 @@ class CallViewModel @Inject constructor(
                     }
 
                     is AgentEvent.VoiceRoomParamsFailEvent ->{
+                        _uiState.update { it.copy(isLoading = false) }
                         ToastUtils.showLong(context.getString(R.string.room_creation_failed, event.msg))
                     }
 
                     is AgentEvent.CallConnected -> {
-                        _uiState.update { it.copy(isRemoteVideoReady = true) }
+                        LogUtils.d("通话已接通：CallConnected")
+                        markCallConnectedAndStartTimer()
                     }
 
                     is AgentEvent.CallDisconnected -> {
@@ -106,8 +118,7 @@ class CallViewModel @Inject constructor(
                         _uiState.update { it.copy(isRemoteVideoMuted = event.isMuted) }
                     }
 
-
-                    is AgentEvent.RemoteLanguageEvent->{
+                    is AgentEvent.RemoteLanguageEvent -> {
                         LogUtils.d("远端语言：${event.language}")
                     }
 
@@ -115,6 +126,29 @@ class CallViewModel @Inject constructor(
                 }
             }
         }
+    }
+
+    private fun markCallConnectedAndStartTimer() {
+        if (_uiState.value.isCallConnected && callDurationJob?.isActive == true) return
+        _uiState.update {
+            it.copy(
+                isRemoteVideoReady = true,
+                isCallConnected = true,
+            )
+        }
+        startCallDurationTimer()
+    }
+
+    private fun observeGlobalWsConnectionState() {
+        viewModelScope.launch {
+            wsConnectionStateManager.state.collect { ws ->
+                _uiState.update { it.copy(wsConnection = ws) }
+            }
+        }
+    }
+
+    fun reconnectWebSocket() {
+        wsConnectionStateManager.manualReconnect()
     }
 
     /**
@@ -206,7 +240,26 @@ class CallViewModel @Inject constructor(
     fun startCall(localView: TextureView? = null, remoteView: TextureView? = null) {
         this.pendingLocalView = localView
         this.pendingRemoteView = remoteView
+        if (!hasRecordAudioPermission()) {
+            _uiState.update { it.copy(isLoading = false) }
+            viewModelScope.launch {
+                _requestAudioPermissionEvent.emit(Unit)
+            }
+            return
+        }
+        startCallInternal()
+    }
 
+    fun onRecordAudioPermissionResult(isGranted: Boolean) {
+        if (isGranted) {
+            startCallInternal()
+        } else {
+            _uiState.update { it.copy(isLoading = false) }
+            ToastUtils.showLong(context.getString(R.string.permission_audio_required))
+        }
+    }
+
+    private fun startCallInternal() {
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true) }
             val mac = bluetoothDataManager.getBluetoothAddress() ?: ""
@@ -221,13 +274,39 @@ class CallViewModel @Inject constructor(
         }
     }
 
+    private fun hasRecordAudioPermission(): Boolean {
+        return ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.RECORD_AUDIO
+        ) == PackageManager.PERMISSION_GRANTED
+    }
+
+    private fun startCallDurationTimer() {
+        callDurationJob?.cancel()
+        _uiState.update { it.copy(callDurationSeconds = 0) }
+        callDurationJob = viewModelScope.launch {
+            while (isActive) {
+                delay(1000)
+                _uiState.update { it.copy(callDurationSeconds = it.callDurationSeconds + 1) }
+            }
+        }
+    }
+
+    private fun stopCallDurationTimer() {
+        callDurationJob?.cancel()
+        callDurationJob = null
+    }
+
     fun endCall() {
+        stopCallDurationTimer()
         AiAssistantClient.getInstance().endCall()
         _uiState.update {
             it.copy(
                 isInCall = false,
                 hostUrl = null,
                 isRemoteVideoReady = false,
+                isCallConnected = false,
+                callDurationSeconds = 0,
                 translationLogs = emptyList(),
                 isMicMuted = false,
                 isSpeakerOn = true,
@@ -239,8 +318,25 @@ class CallViewModel @Inject constructor(
         pendingRemoteView = null
     }
 
+    private fun disableOpusStreamPushForTranslation() {
+        viewModelScope.launch {
+            GlassesManage.setVoiceWakeUp(
+                localOfflineEnabled = false,
+                opusPushEnabled = false,
+            )
+        }
+    }
+
+    private fun restoreOpusStreamPushAfterTranslation() {
+        GlassesManage.setVoiceWakeUp(
+            localOfflineEnabled = true,
+            opusPushEnabled = true,
+        )
+    }
+
     override fun onCleared() {
         super.onCleared()
+        restoreOpusStreamPushAfterTranslation()
         endCall()
     }
 }

@@ -39,8 +39,8 @@ public class DouYinEntryActivity extends Activity implements IApiEventHandler {
 
     private static final String TAG = "DouYinEntryActivity";
     private static final String ACCESS_TOKEN_URL = "https://open.douyin.com/oauth/access_token/";
-    private static final String CLIENT_KEY = "xxx";
-    private static final String CLIENT_SECRET = "xxx";
+    private static final String CLIENT_KEY = "aw21acpmg1c718rd";
+    private static final String CLIENT_SECRET = "a60a3610ccb78c916269b1969c1a0a32";
     private static final OkHttpClient HTTP_CLIENT = new OkHttpClient();
 
     DouYinOpenApi douYinOpenApi;

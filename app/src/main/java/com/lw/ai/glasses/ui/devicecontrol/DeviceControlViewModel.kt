@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.blankj.utilcode.util.ToastUtils
 import com.fission.wear.glasses.sdk.GlassesManage
 import com.fission.wear.glasses.sdk.constant.GlassesConstant
+import com.fission.wear.glasses.sdk.constant.GlassesConstant.ActionSyncType
 import com.fission.wear.glasses.sdk.constant.LyCmdConstant
 import com.fission.wear.glasses.sdk.events.CmdResultEvent
 import com.lw.ai.glasses.R
@@ -33,14 +34,42 @@ class DeviceControlViewModel @Inject constructor(
     private fun observeGlassesEvents() {
         viewModelScope.launch {
             GlassesManage.eventFlow().collect { event ->
-                if (event is CmdResultEvent.DeviceVolumeState) {
-                    _uiState.update {
-                        it.copy(
-                            systemVolume = event.systemVolume,
-                            mediaVolume = event.mediaVolume,
-                            callVolume = event.callVolume,
-                        )
+                when (event) {
+                    is CmdResultEvent.DeviceVolumeState -> {
+                        _uiState.update {
+                            it.copy(
+                                systemVolume = event.systemVolume,
+                                mediaVolume = event.mediaVolume,
+                                callVolume = event.callVolume,
+                            )
+                        }
                     }
+
+                    is CmdResultEvent.DeviceSupportedFeatures -> {
+                        val config = event.featuresConfigInfo
+                        _uiState.update {
+                            it.copy(
+                                featuresConfigInfo = config,
+                                featureSupportRows = DeviceFeaturesMapper.toFeatureSupportRows(config),
+                            )
+                        }
+                    }
+
+                    is CmdResultEvent.ActionSync -> {
+                        _uiState.update { state ->
+                            when (event.type) {
+                                ActionSyncType.TAKE_PHOTO -> state.copy(isTakingPhoto = event.state)
+                                ActionSyncType.RECORD_AUDIO -> state.copy(isRecordingAudio = event.state)
+                                ActionSyncType.RECORD_VIDEO -> state.copy(isRecordingVideo = event.state)
+                                ActionSyncType.MUSIC -> state.copy(isMusicPlaying = event.state)
+                                ActionSyncType.IMPORTING -> state.copy(isImporting = event.state)
+                                ActionSyncType.WEAR -> state.copy(isWearing = event.state)
+                                else -> state
+                            }
+                        }
+                    }
+
+                    else -> Unit
                 }
             }
         }
@@ -48,6 +77,14 @@ class DeviceControlViewModel @Inject constructor(
 
     fun loadCurrentVolume() {
         GlassesManage.getVolume()
+    }
+
+    fun loadDeviceSupportedFeatures() {
+        GlassesManage.getDeviceSupportedFeatures()
+    }
+
+    fun loadActionState() {
+        GlassesManage.getActionState()
     }
 
     fun setVolume(type: LyCmdConstant.AudioVolumeType, volume: Int) {

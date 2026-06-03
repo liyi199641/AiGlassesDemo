@@ -16,8 +16,17 @@ data class TranslationSessionEntity(
     val requestId: String, // 会话唯一 ID
     val sourceLang: String,
     val targetLang: String,
-    val timestamp: Long = System.currentTimeMillis()
-)
+    /** [MODE_REAL_TIME] 或 [MODE_DIALOGUE] */
+    val translationMode: String = MODE_REAL_TIME,
+    val timestamp: Long = System.currentTimeMillis(),
+) {
+    companion object {
+        const val MODE_REAL_TIME = "real_time"
+        const val MODE_DIALOGUE = "dialogue"
+        /** 实时翻译片段固定 messageId，与 requestId 组合后唯一标识一句话。 */
+        const val REAL_TIME_SEGMENT_MESSAGE_ID = "0"
+    }
+}
 
 /**
  * 副表：代表会话中的每一段消息片段

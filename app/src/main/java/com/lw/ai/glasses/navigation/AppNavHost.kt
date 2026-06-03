@@ -10,6 +10,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.blankj.utilcode.util.LogUtils
+import com.lw.ai.glasses.ui.appsettings.AppSettingsScreen
 import com.lw.ai.glasses.ui.assistant.AiAssistantScreen
 import com.lw.ai.glasses.ui.call.CallScreen
 import com.lw.ai.glasses.ui.devicecontrol.DeviceControlScreen
@@ -53,6 +54,10 @@ fun AppNavHost() {
             )
         }
 
+        composable(Screen.AppSettings.route) {
+            AppSettingsScreen(onNavigateBack = navigateBack)
+        }
+
         composable(Screen.Image.route) {
             ImageScreen(onNavigateBack = navigateBack)
         }
@@ -87,6 +92,5 @@ fun AppNavHost() {
         composable(Screen.TranslateImage.route) {
             ImageTranslateScreen(onNavigateBack = navigateBack)
         }
-
     }
 }

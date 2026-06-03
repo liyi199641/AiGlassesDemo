@@ -1,5 +1,6 @@
 package com.lw.ai.glasses.ui.home
 
+import com.lw.ai.glasses.ui.base.viewmodel.BaseViewModel
 import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
@@ -15,21 +16,15 @@ import com.fission.wear.glasses.sdk.config.BleComConfig
 import com.fission.wear.glasses.sdk.config.BleScanConfig
 import com.fission.wear.glasses.sdk.config.SdkConfig
 import com.fission.wear.glasses.sdk.constant.GlassesConstant
-import com.fission.wear.glasses.sdk.constant.GlassesConstant.ACTION_INDEX_MUSIC
-import com.fission.wear.glasses.sdk.constant.GlassesConstant.ACTION_INDEX_SINGLE_TOUCH
-import com.fission.wear.glasses.sdk.constant.GlassesConstant.ACTION_INDEX_WEAR
-import com.fission.wear.glasses.sdk.constant.GlassesConstant.ChannelType
+import com.fission.wear.glasses.sdk.constant.GlassesConstant.ActionSyncType
 import com.fission.wear.glasses.sdk.events.AgentEvent
 import com.fission.wear.glasses.sdk.events.CmdResultEvent
 import com.fission.wear.glasses.sdk.events.ConnectionStateEvent
 import com.fission.wear.glasses.sdk.events.ScanStateEvent
 import com.lw.ai.glasses.R
-import com.lw.ai.glasses.ui.base.viewmodel.BaseViewModel
-import com.lw.ai.glasses.utils.toPersistedEnvironmentOrDefault
+import com.lw.ai.glasses.config.AppConfigLoader
 import com.lw.top.lib_core.data.datastore.AppDataManager
 import com.lw.top.lib_core.data.datastore.BluetoothDataManager
-import com.polidea.rxandroidble3.exceptions.BleDisconnectedException
-import com.polidea.rxandroidble3.exceptions.BleGattException
 import com.polidea.rxandroidble3.scan.ScanFilter
 import com.polidea.rxandroidble3.scan.ScanResult
 import com.polidea.rxandroidble3.scan.ScanSettings
@@ -69,44 +64,15 @@ class HomeViewModel @Inject constructor(
     private val _navigationEvent = MutableSharedFlow<String>()
     val navigationEvent = _navigationEvent.asSharedFlow()
 
-    private val mChannel = ChannelType.LY
     init {
         viewModelScope.launch {
-            bluetoothDataManager.savedBluetoothState.collect { stateInt ->
-                val newState =
-                    ConnectionState.entries.find { it.value == stateInt } ?: ConnectionState.IDLE
-
-                if (newState == ConnectionState.IDLE) {
-                    _uiState.update {
-                        it.copy(
-                            connectionState = ConnectionState.IDLE,
-                        )
-                    }
-                } else {
-                    val currentUiState = _uiState.value.connectionState
-                    if (currentUiState == ConnectionState.IDLE || currentUiState == ConnectionState.DISCONNECTED) {
-                        _uiState.update { it.copy(connectionState = newState) }
-                    }
-                }
+            bluetoothDataManager.getBluetoothName()?.let { savedName ->
+                _uiState.update { it.copy(connectedDeviceName = savedName) }
             }
-        }
-
-        viewModelScope.launch {
-            if (ConnectionState.fromValue(bluetoothDataManager.getBluetoothState()) != ConnectionState.IDLE) {
-                bluetoothDataManager.getBluetoothName()?.let { savedName ->
-                    _uiState.update {
-                        it.copy(connectedDeviceName = savedName)
-                    }
-                }
-            }
-        }
-        viewModelScope.launch {
-            refreshHomeDeviceSummary()
         }
         checkAndRequestPermissions()
         observeGlassesEvents()
         updateFeatures()
-        initEnvironmentState()
     }
 
     fun onFeatureClick(feature: Feature) {
@@ -276,17 +242,13 @@ class HomeViewModel @Inject constructor(
 
                     is ConnectionStateEvent.Connecting -> {
                         _uiState.update {
-                            it.copy(
-                                connectionState = ConnectionState.CONNECTING,
-                            )
+                            it.copy(connectionState = ConnectionState.CONNECTING)
                         }
                     }
 
                     is ConnectionStateEvent.Connected -> {
                         _uiState.update {
-                            it.copy(
-                                connectionState = ConnectionState.CONNECTED,
-                            )
+                            it.copy(connectionState = ConnectionState.CONNECTED)
                         }
                         refreshHomeDeviceSummary()
                     }
@@ -295,14 +257,20 @@ class HomeViewModel @Inject constructor(
                         _uiState.update {
                             it.copy(
                                 connectionState = ConnectionState.DISCONNECTED,
-                                batteryLevel = -1
+                                batteryLevel = -1,
                             )
                         }
+                    }
 
-                        if (error is BleDisconnectedException || error is BleGattException) {
-                            _uiState.update {
-                                it.copy(connectionState = ConnectionState.DISCONNECTED)
-                            }
+                    is ConnectionStateEvent.Idle -> {
+                        _uiState.update {
+                            it.copy(connectionState = ConnectionState.IDLE)
+                        }
+                    }
+
+                    is ConnectionStateEvent.Failed -> {
+                        _uiState.update {
+                            it.copy(connectionState = ConnectionState.DISCONNECTED)
                         }
                     }
 
@@ -322,27 +290,19 @@ class HomeViewModel @Inject constructor(
 
                     is CmdResultEvent.ActionSync -> {
                         when (events.type) {
-
-                            ACTION_INDEX_SINGLE_TOUCH-> {
-                                LogUtils.d("actionIndex","单击事件 ${events.state}")
+                            ActionSyncType.SINGLE_TOUCH -> {
+                                LogUtils.d("actionIndex", "单击事件 ${events.state}")
                             }
-                            ACTION_INDEX_WEAR -> {
-                                LogUtils.d("actionIndex","佩戴状态发生变化${events.state}")
+                            ActionSyncType.WEAR -> {
+                                LogUtils.d("actionIndex", "佩戴状态发生变化${events.state}")
                             }
-
-                            ACTION_INDEX_MUSIC -> {
-                                //App 设备翻译时，App自行处理逻辑，开启录音。关闭音乐等逻辑
-                                LogUtils.d("actionIndex","轻触设备，音乐状态发生变化${events.state}")
+                            ActionSyncType.MUSIC -> {
+                                // App 设备翻译时，App 自行处理逻辑，开启录音、关闭音乐等
+                                LogUtils.d("actionIndex", "轻触设备，音乐状态发生变化${events.state}")
                             }
-
-                            else -> {
-
-                            }
-
+                            else -> Unit
                         }
                     }
-
-
 
                     else -> {}
                 }
@@ -350,50 +310,36 @@ class HomeViewModel @Inject constructor(
         }
     }
 
-    private suspend fun refreshHomeDeviceSummary() {
-        if (ConnectionState.fromValue(bluetoothDataManager.getBluetoothState()) != ConnectionState.CONNECTED) {
+    private fun refreshHomeDeviceSummary() {
+        if (_uiState.value.connectionState != ConnectionState.CONNECTED) {
             return
         }
         GlassesManage.getBatteryLevel()
         GlassesManage.getMediaFileCount()
+        GlassesManage.setVoiceWakeUp(localOfflineEnabled = true, opusPushEnabled = true)
     }
 
-    private suspend fun connectAiAssistant(){
-        if (!bluetoothDataManager.getBluetoothAddress().isNullOrEmpty()){
-            AiAssistantClient.getInstance().connectAiAssistant(
-                bluetoothDataManager.getBluetoothAddress()!!,
-//                            "4A:AB:03:D3:8F:F0",
-                bluetoothDataManager.getBluetoothName()!!,
-                "6600",
-                "ukuSPzMnpLvLS2TTLL9S8PvUJzfTCHnu",
-                "tz5dgRLm6tXS8gRr",
-            )
+    private suspend fun initGlassesSdkAndAiClient() {
+        val snapshot = AppConfigLoader.loadSnapshot(appDataManager)
+        GlassesManage.initialize(
+            SdkConfig(true, context, snapshot.selectedChannel, LogUtils.V),
+        )
+        val localConfig = AppConfigLoader.localCustomEnvironment(snapshot)
+        if (localConfig != null) {
+            AiAssistantClient.getInstance().applyServerEnvironmentToGlobals(localConfig)
+        } else {
+            AiAssistantClient.getInstance().applyServerEnvironmentToGlobals(snapshot.selectedEnvironment)
         }
-    }
-
-    private fun initGlassesSdkAndAiClient() {
-        GlassesManage.initialize(SdkConfig(true,context, mChannel, LogUtils.V))
-        applyAiServerEnvironment(_uiState.value.selectedEnvironment)
         AiAssistantClient.getInstance().initializeAiClient(
             AiAgentConfig(
                 context = context,
-                channel = mChannel,
+                channel = snapshot.selectedChannel,
                 aiModelType = GlassesConstant.AiModelVendor.DEFAULT,
-                serverEnvironment = _uiState.value.selectedEnvironment,
+                serverEnvironment = snapshot.selectedEnvironment,
+                customServerEnvironment = localConfig,
+                enableDefaultPlaySimultaneousAudio = false,
             ),
         )
-    }
-
-    private fun applyAiServerEnvironment(
-        env: GlassesConstant.ServerEnvironment,
-        localWsUrlOverride: String? = null,
-    ) {
-        val localWsUrl = if (env == GlassesConstant.ServerEnvironment.LOCAL) {
-            localWsUrlOverride ?: _uiState.value.localEnvironmentWsUrl
-        } else {
-            null
-        }
-        AiAssistantClient.applyServerEnvironmentToGlobals(env, localWsUrl)
     }
 
     private fun isTargetGlassesDevice(name: String): Boolean {
@@ -419,7 +365,13 @@ class HomeViewModel @Inject constructor(
     }
 
     fun startScanDevice() {
-        initGlassesSdkAndAiClient()
+        viewModelScope.launch {
+            initGlassesSdkAndAiClient()
+            startScanDeviceInternal()
+        }
+    }
+
+    private fun startScanDeviceInternal() {
         if (_uiState.value.isScanning) return
         _scannedDevices.value = emptyList()
         _uiState.update { it.copy(isScanning = true) }
@@ -439,107 +391,38 @@ class HomeViewModel @Inject constructor(
     }
 
     fun connectDevice(mac: String, name: String) {
-        initGlassesSdkAndAiClient()
+        viewModelScope.launch {
+            initGlassesSdkAndAiClient()
+            connectDeviceInternal(mac, name)
+        }
+    }
+
+    private suspend fun connectDeviceInternal(mac: String, name: String) {
         stopScanDevice()
         if (mac.isEmpty()) {
-            viewModelScope.launch {
-                if (!bluetoothDataManager.getBluetoothAddress().isNullOrEmpty()) {
-                    connectDevice(
-                        bluetoothDataManager.getBluetoothAddress()!!,
-                        bluetoothDataManager.getBluetoothName()!!
-                    )
-                }
-            }
-        } else {
-            GlassesManage.connect(BleComConfig(context, mac,false))
-            viewModelScope.launch {
-                bluetoothDataManager.saveBluetoothDevice(mac, name)
-            }
-        }
-
-        viewModelScope.launch {
-            _uiState.update {
-                it.copy(
-                    connectedDeviceName = name.ifEmpty { bluetoothDataManager.getBluetoothName()!! },
+            if (!bluetoothDataManager.getBluetoothAddress().isNullOrEmpty()) {
+                connectDeviceInternal(
+                    bluetoothDataManager.getBluetoothAddress()!!,
+                    bluetoothDataManager.getBluetoothName()!!,
                 )
             }
+            return
         }
-
-    }
-
-    private fun initEnvironmentState() {
-        viewModelScope.launch {
-            val localWsUrl = appDataManager.getLocalEnvironmentWsUrl()
-                ?: GlassesConstant.ServerEnvironment.LOCAL.wsUrl
-            val savedEnv = appDataManager.getEnvironment()
-                ?.let { name ->
-                    runCatching { GlassesConstant.ServerEnvironment.valueOf(name) }.getOrNull()
-                }
-                ?.toPersistedEnvironmentOrDefault()
-                ?: GlassesConstant.ServerEnvironment.entries.firstOrNull {
-                    it.wsUrl == GlassesConstant.AI_ASSISTANT_BASE_WS_URL
-                }
-                ?: GlassesConstant.ServerEnvironment.DEV
-
-            _uiState.update {
-                it.copy(
-                    selectedEnvironment = savedEnv,
-                    localEnvironmentWsUrl = localWsUrl
-                )
-            }
-        }
-    }
-
-    fun updateEnvironment(env: GlassesConstant.ServerEnvironment, localWsUrl: String? = null) {
-        val normalizedLocalWsUrl = localWsUrl?.trim().orEmpty()
-        if (env == GlassesConstant.ServerEnvironment.LOCAL) {
-            if (normalizedLocalWsUrl.isBlank()) {
-                ToastUtils.showLong(context.getString(R.string.local_ws_empty))
-                return
-            }
-            if (!normalizedLocalWsUrl.startsWith("ws://") && !normalizedLocalWsUrl.startsWith("wss://")) {
-                ToastUtils.showLong(context.getString(R.string.local_ws_scheme_invalid))
-                return
-            }
-        }
-
-        val appliedLocalWsUrl = normalizedLocalWsUrl.ifBlank {
-            _uiState.value.localEnvironmentWsUrl
-        }
-        applyAiServerEnvironment(env, appliedLocalWsUrl)
-        AiAssistantClient.getInstance().initializeAiClient(
-            AiAgentConfig(
-                context = context,
-                channel = mChannel,
-                aiModelType = GlassesConstant.AiModelVendor.DEFAULT,
-                serverEnvironment = env,
-                enableDefaultPlaySimultaneousAudio = true,
-                enableDefaultPlayAgentAudio = true,
-                translationAudioStorageDirName = "transAudioFiles"
-            )
-
-        )
-
-        viewModelScope.launch {
-            connectAiAssistant()
-        }
-
+        GlassesManage.connect(BleComConfig(context, mac, false))
+        bluetoothDataManager.saveBluetoothDevice(mac, name)
         _uiState.update {
             it.copy(
-                selectedEnvironment = env,
-                localEnvironmentWsUrl = if (env == GlassesConstant.ServerEnvironment.LOCAL) {
-                    appliedLocalWsUrl
-                } else {
-                    it.localEnvironmentWsUrl
-                }
+                connectedDeviceName = name.ifEmpty { bluetoothDataManager.getBluetoothName()!! },
             )
         }
-        viewModelScope.launch {
-            appDataManager.saveEnvironment(env.name)
-            if (env == GlassesConstant.ServerEnvironment.LOCAL) {
-                appDataManager.saveLocalEnvironmentWsUrl(appliedLocalWsUrl)
-            }
+    }
+
+    fun reconnectBt() {
+        if (_uiState.value.connectionState != ConnectionState.CONNECTED) {
+            ToastUtils.showShort(context.getString(R.string.bt_reconnect_ble_required))
+            return
         }
+        GlassesManage.reconnectBluetooth()
     }
 
     private fun updateFeatures() {

@@ -37,10 +37,14 @@ class StreamAudioRecorder(private val context: Context) {
         const val SAMPLE_RATE = 16000
         const val CHANNEL_CONFIG = AudioFormat.CHANNEL_IN_MONO
         const val AUDIO_FORMAT = AudioFormat.ENCODING_PCM_16BIT
+        private const val RECORDING_DIR = "translationSourceAudio"
     }
 
     @SuppressLint("MissingPermission")
-    fun start(fileName: String, onAudioData: (ByteArray) -> Unit) {
+    fun start(
+        fileName: String,
+        onAudioData: (ByteArray) -> ByteArray,
+    ) {
         if (isRecording) return
 
         enableCommunicationMode()
@@ -51,8 +55,10 @@ class StreamAudioRecorder(private val context: Context) {
             AUDIO_FORMAT
         ) * 2
 
+        val audioSource = MediaRecorder.AudioSource.VOICE_COMMUNICATION
+
         audioRecord = AudioRecord(
-            MediaRecorder.AudioSource.VOICE_COMMUNICATION,
+            audioSource,
             SAMPLE_RATE,
             CHANNEL_CONFIG,
             AUDIO_FORMAT,
@@ -60,7 +66,12 @@ class StreamAudioRecorder(private val context: Context) {
         )
         enableAudioEffects(audioRecord?.audioSessionId ?: 0)
 
-        val file = File(context.cacheDir, "$fileName.pcm")
+        val recordDir = File(context.filesDir, RECORDING_DIR).apply {
+            if (!exists()) {
+                mkdirs()
+            }
+        }
+        val file = File(recordDir, "$fileName.pcm")
         LogUtils.d("录音文件地址：$file")
         currentFilePath = file.absolutePath
         fileOutputStream = FileOutputStream(file)
@@ -82,11 +93,10 @@ class StreamAudioRecorder(private val context: Context) {
 
                 if (readSize > 0) {
                     val validBytes = buffer.copyOf(readSize)
-
-                    onAudioData(validBytes)
+                    val outputBytes = onAudioData(validBytes)
 
                     try {
-                        fileOutputStream?.write(validBytes)
+                        fileOutputStream?.write(outputBytes)
                     } catch (e: Exception) {
                         e.printStackTrace()
                     }
@@ -99,6 +109,7 @@ class StreamAudioRecorder(private val context: Context) {
         if (!isRecording) return null
 
         isRecording = false
+        val pcmPath = currentFilePath
 
         try {
             audioRecord?.stop()
@@ -110,13 +121,17 @@ class StreamAudioRecorder(private val context: Context) {
         }
 
         return withContext(Dispatchers.IO) {
-            convertPcmToWav(currentFilePath)
+            convertPcmToWav(pcmPath)?.also { wavPath ->
+                LogUtils.d("实时翻译录音已保存，pcm=$pcmPath, wav=$wavPath")
+            }
         }
     }
 
     fun getCurrentAmplitude(): Float {
         return 0f
     }
+
+    fun getAudioSessionId(): Int = audioRecord?.audioSessionId ?: 0
 
     private fun enableCommunicationMode() {
         val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
@@ -125,8 +140,9 @@ class StreamAudioRecorder(private val context: Context) {
     }
 
     private fun restoreAudioMode() {
-        val audioMode = previousAudioMode ?: return
         val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        if (previousAudioMode == null) return
+        val audioMode = previousAudioMode ?: return
         audioManager.mode = audioMode
         previousAudioMode = null
     }
@@ -215,8 +231,6 @@ class StreamAudioRecorder(private val context: Context) {
 
             pcmStream.close()
             wavStream.close()
-
-            pcmFile.delete()
 
             return wavFile.absolutePath
         } catch (e: Exception) {

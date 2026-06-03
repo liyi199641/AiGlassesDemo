@@ -11,7 +11,6 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -39,7 +38,6 @@ import androidx.compose.material.icons.filled.BluetoothDisabled
 import androidx.compose.material.icons.filled.BluetoothSearching
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Badge
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -48,11 +46,8 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -68,16 +63,12 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
-import com.fission.wear.glasses.sdk.constant.GlassesConstant
 import com.lw.ai.glasses.R
 import com.lw.ai.glasses.ui.base.screen.popup.CenteredFadeInPopup
-import com.lw.ai.glasses.utils.selectableServerEnvironments
-import com.lw.ai.glasses.utils.titleRes
 import com.polidea.rxandroidble3.scan.ScanResult
 import kotlinx.coroutines.launch
 
@@ -90,100 +81,8 @@ fun HomeScreen(
     val uiState by viewModel.uiState.collectAsState()
 
     var showScanningDevices by remember { mutableStateOf(false) }
-    var showWsDebugDialog by remember { mutableStateOf(false) }
-    
-    val context = LocalContext.current
 
-    if (showWsDebugDialog) {
-        var localWsInput by remember(uiState.localEnvironmentWsUrl) {
-            mutableStateOf(uiState.localEnvironmentWsUrl)
-        }
-        AlertDialog(
-            onDismissRequest = { showWsDebugDialog = false },
-            title = { Text(stringResource(R.string.environment_switch)) },
-            text = {
-                Column {
-                    Text(stringResource(R.string.environment_switch_hint), style = MaterialTheme.typography.bodySmall)
-                    Spacer(modifier = Modifier.height(12.dp))
-                    LazyColumn(modifier = Modifier.fillMaxWidth()) {
-                        items(selectableServerEnvironments()) { env ->
-                            val isLocalEnv = env == GlassesConstant.ServerEnvironment.LOCAL
-                            val applyEnvironment = {
-                                if (isLocalEnv) {
-                                    val trimmedWsUrl = localWsInput.trim()
-                                    viewModel.updateEnvironment(env, trimmedWsUrl)
-                                    if (
-                                        trimmedWsUrl.startsWith("ws://") ||
-                                        trimmedWsUrl.startsWith("wss://")
-                                    ) {
-                                        showWsDebugDialog = false
-                                    }
-                                } else {
-                                    viewModel.updateEnvironment(env)
-                                    showWsDebugDialog = false
-                                }
-                            }
-                            Column(modifier = Modifier.fillMaxWidth()) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clickable { applyEnvironment() }
-                                        .padding(vertical = 8.dp)
-                                ) {
-                                    RadioButton(
-                                        selected = uiState.selectedEnvironment == env,
-                                        onClick = { applyEnvironment() }
-                                    )
-                                    Text(
-                                        text = stringResource(env.titleRes()),
-                                        modifier = Modifier.padding(start = 8.dp)
-                                    )
-                                }
-                                if (isLocalEnv) {
-                                    OutlinedTextField(
-                                        value = localWsInput,
-                                        onValueChange = { localWsInput = it },
-                                        label = { Text(stringResource(R.string.local_ws_address)) },
-                                        placeholder = { Text(stringResource(R.string.local_ws_url_placeholder)) },
-                                        singleLine = true,
-                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(start = 48.dp, bottom = 8.dp)
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        val trimmedWsUrl = localWsInput.trim()
-                        viewModel.updateEnvironment(
-                            GlassesConstant.ServerEnvironment.LOCAL,
-                            trimmedWsUrl
-                        )
-                        if (
-                            trimmedWsUrl.startsWith("ws://") ||
-                            trimmedWsUrl.startsWith("wss://")
-                        ) {
-                            showWsDebugDialog = false
-                        }
-                    }
-                ) {
-                    Text(stringResource(R.string.save_local_environment))
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showWsDebugDialog = false }) {
-                    Text(stringResource(R.string.close))
-                }
-            }
-        )
-    }
+    val context = LocalContext.current
 
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions()
@@ -237,8 +136,8 @@ fun HomeScreen(
             TopAppBar(
                 title = { Text(stringResource(R.string.home_title)) },
                 actions = {
-                    IconButton(onClick = { showWsDebugDialog = true }) {
-                        Icon(Icons.Default.Settings, contentDescription = stringResource(R.string.environment_settings))
+                    IconButton(onClick = { onNavigate("app_settings") }) {
+                        Icon(Icons.Default.Settings, contentDescription = stringResource(R.string.app_settings_title))
                     }
                 }
             )
@@ -260,9 +159,12 @@ fun HomeScreen(
                         viewModel.startScanDevice()
                     }
                 },
-                onReconnectClick ={
-                    viewModel.connectDevice("","")
-                }
+                onReconnectClick = {
+                    viewModel.connectDevice("", "")
+                },
+                onBtReconnectClick = {
+                    viewModel.reconnectBt()
+                },
             )
 
             FeatureGrid(
@@ -409,13 +311,16 @@ fun DeviceStatusCard(
     uiState: HomeUiState,
     onConnectClick: () -> Unit,
     onReconnectClick: () -> Unit,
+    onBtReconnectClick: () -> Unit,
 ) {
     val unknownDevice = stringResource(R.string.unknown_device)
+    val showBtStatus = uiState.connectionState == ConnectionState.CONNECTED
+            && uiState.btConnectionState != BtConnectionState.IDLE
     Card(
         modifier = Modifier
             .fillMaxWidth()
             .padding(16.dp)
-            .height(100.dp),
+            .height(if (showBtStatus) 120.dp else 100.dp),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.primaryContainer
         ),
@@ -440,53 +345,65 @@ fun DeviceStatusCard(
             when (uiState.connectionState) {
                 // 1. 已连接
                 ConnectionState.CONNECTED -> {
-                    Row(
+                    Column(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(16.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                imageVector = Icons.Default.Bluetooth,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Column {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = Icons.Default.Bluetooth,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Column {
+                                    Text(
+                                        text = uiState.connectedDeviceName ?: unknownDevice,
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    Text(
+                                        text = stringResource(R.string.connected),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                if (uiState.isCharging == true) {
+                                    Icon(
+                                        imageVector = Icons.Default.Bolt,
+                                        contentDescription = null,
+                                        tint = Color.Yellow,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
                                 Text(
-                                    text = uiState.connectedDeviceName ?: unknownDevice,
+                                    text = "${uiState.batteryLevel}%",
                                     style = MaterialTheme.typography.titleMedium,
                                     fontWeight = FontWeight.Bold
                                 )
-                                Text(
-                                    text = stringResource(R.string.connected),
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Icon(
+                                    imageVector = if (uiState.batteryLevel > 20) Icons.Default.BatteryFull else Icons.Default.BatteryStd,
+                                    contentDescription = null,
+                                    tint = if (uiState.batteryLevel > 20) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
                                 )
                             }
                         }
 
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            if (uiState.isCharging == true) {
-                                Icon(
-                                    imageVector = Icons.Default.Bolt,
-                                    contentDescription = null,
-                                    tint = Color.Yellow,
-                                    modifier = Modifier.size(20.dp)
-                                )
-                            }
-                            Text(
-                                text = "${uiState.batteryLevel}%",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Icon(
-                                imageVector = if (uiState.batteryLevel > 20) Icons.Default.BatteryFull else Icons.Default.BatteryStd,
-                                contentDescription = null,
-                                tint = if (uiState.batteryLevel > 20) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
+                        if (showBtStatus) {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            BtStatusRow(
+                                btState = uiState.btConnectionState,
+                                onReconnectClick = onBtReconnectClick,
                             )
                         }
                     }
@@ -569,6 +486,55 @@ fun DeviceStatusCard(
             }
 
         }
+    }
+}
+
+@Composable
+private fun BtStatusRow(
+    btState: BtConnectionState,
+    onReconnectClick: () -> Unit,
+) {
+    val canReconnect = btState == BtConnectionState.FAILED
+            || btState == BtConnectionState.DISCONNECTED
+    val statusText = when (btState) {
+        BtConnectionState.BONDING -> stringResource(R.string.bt_status_bonding)
+        BtConnectionState.CONNECTING -> stringResource(R.string.bt_status_connecting)
+        BtConnectionState.CONNECTED -> stringResource(R.string.bt_status_connected)
+        BtConnectionState.FAILED -> stringResource(R.string.bt_status_failed_tap_reconnect)
+        BtConnectionState.DISCONNECTED -> stringResource(R.string.bt_status_disconnected_tap_reconnect)
+        BtConnectionState.IDLE -> ""
+    }
+    val statusColor = when (btState) {
+        BtConnectionState.CONNECTED -> MaterialTheme.colorScheme.primary
+        BtConnectionState.FAILED, BtConnectionState.DISCONNECTED -> MaterialTheme.colorScheme.error
+        else -> MaterialTheme.colorScheme.onSurfaceVariant
+    }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .then(
+                if (canReconnect) {
+                    Modifier.clickable(onClick = onReconnectClick)
+                } else {
+                    Modifier
+                }
+            ),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (btState == BtConnectionState.BONDING || btState == BtConnectionState.CONNECTING) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(14.dp),
+                strokeWidth = 2.dp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+        }
+        Text(
+            text = statusText,
+            style = MaterialTheme.typography.bodySmall,
+            color = statusColor,
+        )
     }
 }
 

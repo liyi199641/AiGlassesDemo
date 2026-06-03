@@ -1,7 +1,10 @@
 package com.lw.ai.glasses.ui.call
 
+import android.Manifest
 import android.content.Intent
 import android.view.TextureView
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -64,6 +67,8 @@ import androidx.annotation.StringRes
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.fission.wear.glasses.sdk.AiAssistantClient
 import com.lw.ai.glasses.R
+import com.lw.ai.glasses.ui.common.WsConnectionStatusBar
+import kotlinx.coroutines.delay
 
 private data class CallLanguage(
     val code: String,
@@ -76,16 +81,67 @@ fun CallScreen(
     onNavigateBack: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val audioPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        viewModel.onRecordAudioPermissionResult(isGranted)
+    }
+
+    LaunchedEffect(Unit) {
+        viewModel.requestAudioPermissionEvent.collect {
+            audioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+        }
+    }
 
     Surface(
         modifier = Modifier.fillMaxSize(),
         color = MaterialTheme.colorScheme.background
     ) {
-        if (!uiState.isInCall) {
-            CallSetupContent(uiState, viewModel, onNavigateBack)
-        } else {
-            ActiveCallContent(uiState, viewModel)
+        Column(modifier = Modifier.fillMaxSize()) {
+            WsConnectionStatusBar(
+                state = uiState.wsConnection,
+                onReconnect = viewModel::reconnectWebSocket,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .statusBarsPadding()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+            )
+            if (!uiState.isInCall) {
+                CallSetupContent(
+                    uiState = uiState,
+                    viewModel = viewModel,
+                    onNavigateBack = onNavigateBack,
+                    modifier = Modifier.weight(1f),
+                )
+            } else {
+                ActiveCallContent(
+                    uiState = uiState,
+                    viewModel = viewModel,
+                    modifier = Modifier.weight(1f),
+                )
+            }
         }
+    }
+}
+
+@Composable
+private fun CallDurationBadge(
+    durationSeconds: Int,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier = modifier,
+        color = Color.Black.copy(alpha = 0.72f),
+        shape = RoundedCornerShape(20.dp),
+        shadowElevation = 6.dp,
+    ) {
+        Text(
+            text = formatCallDuration(durationSeconds),
+            modifier = Modifier.padding(horizontal = 18.dp, vertical = 10.dp),
+            color = Color.White,
+            fontSize = 20.sp,
+            fontWeight = FontWeight.Bold,
+        )
     }
 }
 
@@ -93,7 +149,8 @@ fun CallScreen(
 fun CallSetupContent(
     uiState: CallUiState,
     viewModel: CallViewModel,
-    onNavigateBack: () -> Unit
+    onNavigateBack: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val languages = listOf(
         CallLanguage("en", R.string.language_english),
@@ -104,9 +161,8 @@ fun CallSetupContent(
     )
 
     Column(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxSize()
-            .statusBarsPadding()
             .padding(24.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
@@ -179,7 +235,8 @@ fun CallSetupContent(
 @Composable
 fun ActiveCallContent(
     uiState: CallUiState,
-    viewModel: CallViewModel
+    viewModel: CallViewModel,
+    modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
     val shareTitle = stringResource(R.string.share)
@@ -191,15 +248,17 @@ fun ActiveCallContent(
         }
     }
 
-    Box(modifier = Modifier.fillMaxSize()) {
+    Box(modifier = modifier.fillMaxSize()) {
 
-        // 1. 视频流层 (最底层)
+        // 1. 视频流层 / 语音等待层 (最底层)
         if (uiState.callMode == CallMode.VIDEO) {
             VideoOverlayLayout(
                 isRemoteReady = uiState.isRemoteVideoReady,
                 isVideoMuted = uiState.isVideoMuted,
                 isRemoteVideoMuted = uiState.isRemoteVideoMuted
             )
+        } else if (!uiState.isCallConnected) {
+            WaitingRemoteJoinOverlay()
         }
 
         // 2. 翻译记录层 (中间层)
@@ -265,60 +324,70 @@ fun ActiveCallContent(
         }
 
         // 4. 底部通话控制栏 (最顶层)
-        Row(
+        Column(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
                 .padding(bottom = 48.dp),
-            horizontalArrangement = Arrangement.SpaceEvenly,
-            verticalAlignment = Alignment.CenterVertically
+            horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            IconButton(
-                onClick = { viewModel.toggleMic() },
-                modifier = Modifier
-                    .size(56.dp)
-                    .background(
-                        if (uiState.isMicMuted) MaterialTheme.colorScheme.error else Color.DarkGray.copy(alpha = 0.6f),
-                        CircleShape
+            if (uiState.isCallConnected) {
+                CallDurationBadge(
+                    durationSeconds = uiState.callDurationSeconds,
+                    modifier = Modifier.padding(bottom = 16.dp),
+                )
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceEvenly,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                IconButton(
+                    onClick = { viewModel.toggleMic() },
+                    modifier = Modifier
+                        .size(56.dp)
+                        .background(
+                            if (uiState.isMicMuted) MaterialTheme.colorScheme.error else Color.DarkGray.copy(alpha = 0.6f),
+                            CircleShape
+                        )
+                ) {
+                    Icon(
+                        imageVector = if (uiState.isMicMuted) Icons.Default.MicOff else Icons.Default.Mic,
+                        contentDescription = stringResource(R.string.mute),
+                        tint = Color.White
                     )
-            ) {
-                Icon(
-                    imageVector = if (uiState.isMicMuted) Icons.Default.MicOff else Icons.Default.Mic,
-                    contentDescription = stringResource(R.string.mute),
-                    tint = Color.White
-                )
-            }
+                }
 
-            IconButton(
-                onClick = { viewModel.endCall() },
-                modifier = Modifier
-                    .size(72.dp)
-                    .background(MaterialTheme.colorScheme.error, CircleShape)
-            ) {
-                Icon(
-                    Icons.Default.CallEnd,
-                    contentDescription = stringResource(R.string.hang_up),
-                    tint = MaterialTheme.colorScheme.onError,
-                    modifier = Modifier.size(32.dp)
-                )
-            }
-
-            IconButton(
-                onClick = { viewModel.toggleSpeaker() },
-                modifier = Modifier
-                    .size(56.dp)
-                    .background(
-                        if (uiState.isSpeakerOn) MaterialTheme.colorScheme.primary else Color.DarkGray.copy(alpha = 0.6f),
-                        CircleShape
+                IconButton(
+                    onClick = { viewModel.endCall() },
+                    modifier = Modifier
+                        .size(72.dp)
+                        .background(MaterialTheme.colorScheme.error, CircleShape)
+                ) {
+                    Icon(
+                        Icons.Default.CallEnd,
+                        contentDescription = stringResource(R.string.hang_up),
+                        tint = MaterialTheme.colorScheme.onError,
+                        modifier = Modifier.size(32.dp)
                     )
-            ) {
-                Icon(
-                    imageVector = if (uiState.isSpeakerOn) Icons.Default.VolumeUp else Icons.Default.VolumeOff,
-                    contentDescription = stringResource(R.string.speaker),
-                    tint = Color.White
-                )
-            }
+                }
 
+                IconButton(
+                    onClick = { viewModel.toggleSpeaker() },
+                    modifier = Modifier
+                        .size(56.dp)
+                        .background(
+                            if (uiState.isSpeakerOn) MaterialTheme.colorScheme.primary else Color.DarkGray.copy(alpha = 0.6f),
+                            CircleShape
+                        )
+                ) {
+                    Icon(
+                        imageVector = if (uiState.isSpeakerOn) Icons.Default.VolumeUp else Icons.Default.VolumeOff,
+                        contentDescription = stringResource(R.string.speaker),
+                        tint = Color.White
+                    )
+                }
+            }
         }
 
         val hostUrl = uiState.hostUrl
@@ -346,12 +415,34 @@ fun ActiveCallContent(
 }
 
 @Composable
+private fun WaitingRemoteJoinOverlay(
+    modifier: Modifier = Modifier,
+) {
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .background(Color.Black.copy(alpha = 0.6f)),
+        contentAlignment = Alignment.Center,
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
+            Spacer(Modifier.height(12.dp))
+            Text(
+                text = stringResource(R.string.waiting_remote_join),
+                color = Color.White,
+                fontSize = 14.sp,
+            )
+        }
+    }
+}
+
+@Composable
 fun VideoOverlayLayout(
     isRemoteReady: Boolean,
     isVideoMuted: Boolean,
     isRemoteVideoMuted: Boolean
 ) {
-    Box(modifier = Modifier.fillMaxSize().statusBarsPadding()) {
+    Box(modifier = Modifier.fillMaxSize()) {
         // 远端视频
         if (isRemoteReady && !isRemoteVideoMuted) {
             AndroidView(
@@ -362,6 +453,8 @@ fun VideoOverlayLayout(
                 },
                 modifier = Modifier.fillMaxSize()
             )
+        } else if (!isRemoteReady) {
+            WaitingRemoteJoinOverlay()
         } else {
             Box(
                 modifier = Modifier
@@ -370,24 +463,18 @@ fun VideoOverlayLayout(
                 contentAlignment = Alignment.Center
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    if (!isRemoteReady) {
-                        CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
-                        Spacer(Modifier.height(12.dp))
-                        Text(stringResource(R.string.waiting_remote_join), color = Color.White, fontSize = 14.sp)
-                    } else {
-                        Icon(Icons.Default.Person, contentDescription = null, tint = Color.Gray, modifier = Modifier.size(64.dp))
-                        Spacer(Modifier.height(12.dp))
-                        Text(stringResource(R.string.remote_camera_off), color = Color.White, fontSize = 14.sp)
-                    }
+                    Icon(Icons.Default.Person, contentDescription = null, tint = Color.Gray, modifier = Modifier.size(64.dp))
+                    Spacer(Modifier.height(12.dp))
+                    Text(stringResource(R.string.remote_camera_off), color = Color.White, fontSize = 14.sp)
                 }
             }
         }
 
-        // 本地视频预览 (右上角小窗)
+        // 本地视频预览 (右上角小窗，贴顶)
         Card(
             modifier = Modifier
                 .align(Alignment.TopEnd)
-                .padding(top = 16.dp, end = 16.dp)
+                .padding(end = 16.dp)
                 .size(width = 90.dp, height = 130.dp),
             shape = RoundedCornerShape(8.dp),
             elevation = CardDefaults.cardElevation(4.dp)

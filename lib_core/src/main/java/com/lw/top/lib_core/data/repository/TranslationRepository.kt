@@ -18,6 +18,10 @@ class TranslationRepository @Inject constructor(
         return translationDao.getAllSessionsWithMessagesFlow()
     }
 
+    fun getSessionsWithMessagesByModeFlow(mode: String): Flow<List<TranslationWithMessages>> {
+        return translationDao.getSessionsWithMessagesByModeFlow(mode)
+    }
+
     suspend fun insertSession(session: TranslationSessionEntity) {
         withContext(Dispatchers.IO) {
             translationDao.insertSession(session)
@@ -36,15 +40,41 @@ class TranslationRepository @Inject constructor(
         }
     }
 
+    suspend fun getMessageBySegmentRequestId(requestId: String): TranslationMessageEntity? {
+        return withContext(Dispatchers.IO) {
+            translationDao.getMessageBySegmentRequestId(requestId)
+        }
+    }
+
     suspend fun clearAllTranslations() {
         withContext(Dispatchers.IO) {
             translationDao.clearAll()
         }
     }
 
+    suspend fun clearTranslationsByMode(mode: String) {
+        withContext(Dispatchers.IO) {
+            translationDao.clearByMode(mode)
+        }
+    }
+
     suspend fun deleteMessageById(requestId: String, messageId: String) {
         withContext(Dispatchers.IO) {
             translationDao.deleteMessageById(requestId, messageId)
+        }
+    }
+
+    suspend fun getMessagesByRequestId(requestId: String): List<TranslationMessageEntity> {
+        return withContext(Dispatchers.IO) {
+            translationDao.getMessagesByRequestId(requestId)
+        }
+    }
+
+    /** 实时翻译：同一 requestId 只保留一条记录，清理文本/音频 messageId 不一致的重复行。 */
+    suspend fun upsertRealTimeMessage(message: TranslationMessageEntity) {
+        withContext(Dispatchers.IO) {
+            translationDao.deleteMessagesByRequestId(message.requestId)
+            translationDao.insertMessage(message)
         }
     }
 }

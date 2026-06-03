@@ -52,6 +52,8 @@ fun DeviceControlScreen(
 
     LaunchedEffect(Unit) {
         viewModel.loadCurrentVolume()
+        viewModel.loadDeviceSupportedFeatures()
+        viewModel.loadActionState()
     }
 
     Scaffold(
@@ -87,7 +89,16 @@ fun DeviceControlScreen(
             item {
                 ControlSectionCard(
                     title = stringResource(R.string.music_control),
-                    summary = stringResource(R.string.music_control_summary)
+                    summary = stringResource(R.string.music_control_summary),
+                    statusText = stringResource(
+                        if (uiState.isMusicPlaying) {
+                            R.string.action_status_music_playing
+                        } else {
+                            R.string.action_status_music_idle
+                        }
+                    ),
+                    statusActive = uiState.isMusicPlaying,
+                    statusVisual = ActionStatusVisual.MUSIC,
                 ) {
                     ControlButtonRow(
                         primaryText = stringResource(R.string.play),
@@ -107,7 +118,16 @@ fun DeviceControlScreen(
             item {
                 ControlSectionCard(
                     title = stringResource(R.string.recording),
-                    summary = stringResource(R.string.recording_summary)
+                    summary = stringResource(R.string.recording_summary),
+                    statusText = stringResource(
+                        if (uiState.isRecordingAudio) {
+                            R.string.action_status_recording_audio
+                        } else {
+                            R.string.action_status_recording_audio_idle
+                        }
+                    ),
+                    statusActive = uiState.isRecordingAudio,
+                    statusVisual = ActionStatusVisual.RECORD_AUDIO,
                 ) {
                     ControlButtonRow(
                         primaryText = stringResource(R.string.start_recording),
@@ -120,7 +140,16 @@ fun DeviceControlScreen(
             item {
                 ControlSectionCard(
                     title = stringResource(R.string.video_recording),
-                    summary = stringResource(R.string.video_recording_summary)
+                    summary = stringResource(R.string.video_recording_summary),
+                    statusText = stringResource(
+                        if (uiState.isRecordingVideo) {
+                            R.string.action_status_recording_video
+                        } else {
+                            R.string.action_status_recording_video_idle
+                        }
+                    ),
+                    statusActive = uiState.isRecordingVideo,
+                    statusVisual = ActionStatusVisual.RECORD_VIDEO,
                 ) {
                     ControlButtonRow(
                         primaryText = stringResource(R.string.start_video_recording),
@@ -133,7 +162,16 @@ fun DeviceControlScreen(
             item {
                 ControlSectionCard(
                     title = stringResource(R.string.photo_and_ai),
-                    summary = stringResource(R.string.photo_and_ai_summary)
+                    summary = stringResource(R.string.photo_and_ai_summary),
+                    statusText = stringResource(
+                        if (uiState.isTakingPhoto) {
+                            R.string.action_status_taking_photo
+                        } else {
+                            R.string.action_status_photo_idle
+                        }
+                    ),
+                    statusActive = uiState.isTakingPhoto,
+                    statusVisual = ActionStatusVisual.PHOTO,
                 ) {
                     ControlButtonRow(
                         primaryText = stringResource(R.string.take_picture_for_ai),
@@ -168,12 +206,95 @@ fun DeviceControlScreen(
             item {
                 ControlSectionCard(
                     title = stringResource(R.string.device_status),
-                    summary = stringResource(R.string.device_status_summary)
+                    summary = stringResource(R.string.device_status_summary),
+                    statusText = stringResource(
+                        if (uiState.isImporting) {
+                            R.string.action_status_importing
+                        } else {
+                            R.string.action_status_import_idle
+                        }
+                    ),
+                    statusActive = uiState.isImporting,
+                    statusVisual = ActionStatusVisual.IMPORT,
                 ) {
+                    val wearStatusText = when (uiState.isWearing) {
+                        true -> stringResource(R.string.action_status_wearing)
+                        false -> stringResource(R.string.action_status_not_wearing)
+                        null -> stringResource(R.string.action_status_wear_unknown)
+                    }
+                    ActionStatusIndicator(
+                        text = stringResource(R.string.device_action_status_label, wearStatusText),
+                        active = uiState.isWearing == true,
+                        visual = ActionStatusVisual.WEAR,
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
                     FullWidthButton(text = stringResource(R.string.refresh_device_status), onClick = viewModel::refreshDeviceState)
                 }
             }
+            item {
+                DeviceSupportedFeaturesCard(
+                    featureRows = uiState.featureSupportRows,
+                    onRefresh = viewModel::loadDeviceSupportedFeatures
+                )
+            }
         }
+    }
+}
+
+@Composable
+private fun DeviceSupportedFeaturesCard(
+    featureRows: List<FeatureSupportRow>,
+    onRefresh: () -> Unit,
+) {
+    ControlSectionCard(
+        title = stringResource(R.string.device_supported_features),
+        summary = stringResource(R.string.device_supported_features_summary)
+    ) {
+        FullWidthButton(
+            text = stringResource(R.string.refresh_device_supported_features),
+            onClick = onRefresh
+        )
+        Spacer(modifier = Modifier.height(12.dp))
+        if (featureRows.isEmpty()) {
+            Text(
+                text = stringResource(R.string.device_supported_features_not_loaded),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        } else {
+            featureRows.forEach { row ->
+                FeatureSupportRowItem(row = row)
+            }
+        }
+    }
+}
+
+@Composable
+private fun FeatureSupportRowItem(row: FeatureSupportRow) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = stringResource(row.labelRes),
+            style = MaterialTheme.typography.bodyMedium,
+            modifier = Modifier.weight(1f)
+        )
+        Text(
+            text = stringResource(
+                if (row.supported) R.string.feature_supported else R.string.feature_not_supported
+            ),
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.Medium,
+            color = if (row.supported) {
+                MaterialTheme.colorScheme.primary
+            } else {
+                MaterialTheme.colorScheme.onSurfaceVariant
+            }
+        )
     }
 }
 
@@ -257,6 +378,9 @@ private fun VolumeSlider(
 private fun ControlSectionCard(
     title: String,
     summary: String,
+    statusText: String? = null,
+    statusActive: Boolean = false,
+    statusVisual: ActionStatusVisual? = null,
     content: @Composable ColumnScope.() -> Unit
 ) {
     Card(
@@ -280,8 +404,16 @@ private fun ControlSectionCard(
                 text = summary,
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = 4.dp, bottom = 12.dp)
+                modifier = Modifier.padding(top = 4.dp, bottom = 8.dp)
             )
+            if (statusText != null && statusVisual != null) {
+                ActionStatusIndicator(
+                    text = statusText,
+                    active = statusActive,
+                    visual = statusVisual,
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+            }
             content()
         }
     }
