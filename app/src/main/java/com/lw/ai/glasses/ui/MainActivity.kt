@@ -1,5 +1,8 @@
 package com.lw.ai.glasses.ui
 
+import AiGlassesTheme
+import AppNavHost
+import PrimaryBackground
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -8,9 +11,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Surface
 import androidx.compose.ui.Modifier
-import com.lw.ai.glasses.navigation.AppNavHost
-import com.lw.ai.glasses.ui.theme.AiGlassesTheme
-import com.lw.ai.glasses.ui.theme.PrimaryBackground
 import dagger.hilt.android.AndroidEntryPoint
 
 @AndroidEntryPoint

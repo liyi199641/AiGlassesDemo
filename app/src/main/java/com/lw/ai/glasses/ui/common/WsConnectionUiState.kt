@@ -10,6 +10,7 @@ data class WsConnectionUiState(
     val connectionState: Int = GlassesConstant.WS_CONNECTION_STATE_DISCONNECTED,
     val reconnectAttempts: Int = 0,
     val reconnectRequired: Boolean = false,
+    val autoConnectAiEnabled: Boolean = true,
 ) {
     val isConnected: Boolean
         get() = connectionState == GlassesConstant.WS_CONNECTION_STATE_CONNECTED
@@ -19,6 +20,22 @@ data class WsConnectionUiState(
 
     val isDisconnected: Boolean
         get() = connectionState == GlassesConstant.WS_CONNECTION_STATE_DISCONNECTED
+
+    /** 是否处于连接/重连过程（顶部通知显示「连接中」）。 */
+    val isWsConnectingPhase: Boolean
+        get() = autoConnectAiEnabled && (isConnecting || (reconnectAttempts > 0 && !reconnectRequired && !isConnected))
+
+    /** 是否因未启用 AI 而无法连接。 */
+    val isAutoConnectAiDisabled: Boolean
+        get() = !autoConnectAiEnabled && !isConnected
+
+    /** 是否处于连接失败态（顶部通知显示「连接失败」）。 */
+    val isWsConnectionFailed: Boolean
+        get() = !isConnected && !isWsConnectingPhase
+
+    /** 仅在未连接时展示顶部通知。 */
+    val shouldShowWsIssueNotification: Boolean
+        get() = !isConnected
 }
 
 fun WsConnectionUiState.applyAgentEvent(event: AgentEvent): WsConnectionUiState = when (event) {

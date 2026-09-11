@@ -1,24 +1,27 @@
 package com.lw.ai.glasses.ui.call
 
-import com.lw.ai.glasses.ui.base.viewmodel.BaseViewModel
+import BaseViewModel
 import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
-import android.util.Log
 import android.view.TextureView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewModelScope
-import com.blankj.utilcode.util.LogUtils
 import com.blankj.utilcode.util.ToastUtils
 import com.fission.wear.glasses.sdk.AiAssistantClient
 import com.fission.wear.glasses.sdk.GlassesManage
 import com.fission.wear.glasses.sdk.events.AgentEvent
 import com.fission.wear.glasses.sdk.events.AiTranslationEvent
+import com.fission.wear.glasses.sdk.util.FissionLogUtils
 import com.lw.ai.glasses.R
 import com.lw.ai.glasses.state.WsConnectionStateManager
+import com.lw.ai.glasses.ui.translate.Language
 import com.lw.top.lib_core.data.datastore.BluetoothDataManager
+import com.google.gson.Gson
+import com.google.gson.reflect.TypeToken
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -64,10 +67,13 @@ class CallViewModel @Inject constructor(
     private var pendingLocalView: TextureView? = null
     private var pendingRemoteView: TextureView? = null
     private var callDurationJob: Job? = null
+    private var pendingVoiceRoomParamsRequestId: Long? = null
 
     init {
 
         disableOpusStreamPushForTranslation()
+
+        loadLanguages()
 
         observeGlobalWsConnectionState()
 
@@ -79,7 +85,9 @@ class CallViewModel @Inject constructor(
                     }
 
                     is AgentEvent.VoiceRoomParamsEvent -> {
+                        if (event.requestId != pendingVoiceRoomParamsRequestId) return@collect
                         val params = event.params
+                        FissionLogUtils.d("创建房间成功：$params")
                         AiAssistantClient.getInstance().startCall(
                             appID = params.appId.toLong(),
                             token = params.appToken,
@@ -99,13 +107,14 @@ class CallViewModel @Inject constructor(
                         }
                     }
 
-                    is AgentEvent.VoiceRoomParamsFailEvent ->{
+                    is AgentEvent.VoiceRoomParamsFailEvent -> {
+                        if (event.requestId != pendingVoiceRoomParamsRequestId) return@collect
                         _uiState.update { it.copy(isLoading = false) }
                         ToastUtils.showLong(context.getString(R.string.room_creation_failed, event.msg))
                     }
 
                     is AgentEvent.CallConnected -> {
-                        LogUtils.d("通话已接通：CallConnected")
+                        FissionLogUtils.d("通话已接通：CallConnected")
                         markCallConnectedAndStartTimer()
                     }
 
@@ -114,12 +123,12 @@ class CallViewModel @Inject constructor(
                     }
 
                     is AgentEvent.RemoteVideoStateEvent -> {
-                        LogUtils.d("远端摄像头状态：${event.isMuted}")
+                        FissionLogUtils.d("远端摄像头状态：${event.isMuted}")
                         _uiState.update { it.copy(isRemoteVideoMuted = event.isMuted) }
                     }
 
                     is AgentEvent.RemoteLanguageEvent -> {
-                        LogUtils.d("远端语言：${event.language}")
+                        FissionLogUtils.d("远端语言：${event.language}")
                     }
 
                     else -> {}
@@ -209,8 +218,43 @@ class CallViewModel @Inject constructor(
         _uiState.update { it.copy(callMode = mode) }
     }
 
-    fun setLanguage(lang: String) {
-        _uiState.update { it.copy(selectedLanguage = lang) }
+    fun setSourceLanguage(lang: Language) {
+        _uiState.update { it.copy(srcLang = lang) }
+    }
+
+    fun setTargetLanguage(lang: Language) {
+        _uiState.update { it.copy(targetLang = lang) }
+    }
+
+    fun swapLanguages() {
+        _uiState.update {
+            it.copy(
+                srcLang = it.targetLang,
+                targetLang = it.srcLang,
+            )
+        }
+    }
+
+    private fun loadLanguages() {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val jsonString =
+                    context.assets.open("languages.json").bufferedReader().use { it.readText() }
+                val listType = object : TypeToken<List<Language>>() {}.type
+                val languages: List<Language> = Gson().fromJson(jsonString, listType)
+                val defaultSrc = languages.find { it.langType == 140 } ?: languages.firstOrNull()
+                val defaultTarget = languages.find { it.langType == 47 } ?: languages.lastOrNull()
+                _uiState.update {
+                    it.copy(
+                        allLanguages = languages,
+                        srcLang = defaultSrc,
+                        targetLang = defaultTarget,
+                    )
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
     }
 
     fun toggleMic() {
@@ -260,16 +304,29 @@ class CallViewModel @Inject constructor(
     }
 
     private fun startCallInternal() {
+        val srcLangType = _uiState.value.srcLang?.langType
+        val targetLangType = _uiState.value.targetLang?.langType
+        if (srcLangType == null) {
+            _uiState.update { it.copy(isLoading = false) }
+            ToastUtils.showLong(context.getString(R.string.please_choose_source_language))
+            return
+        }
+        if (targetLangType == null) {
+            _uiState.update { it.copy(isLoading = false) }
+            ToastUtils.showLong(context.getString(R.string.please_choose_target_language))
+            return
+        }
+
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true) }
             val mac = bluetoothDataManager.getBluetoothAddress() ?: ""
 
-            AiAssistantClient.getInstance().getVoiceRoomParams(
-                lang = 140,
-                target = 47,
+            pendingVoiceRoomParamsRequestId = AiAssistantClient.getInstance().getVoiceRoomParams(
+                lang = srcLangType,
+                target = targetLangType,
                 type = if (_uiState.value.callMode == CallMode.VIDEO) 1 else 2,
                 appId = "954308550",
-                mac = mac
+                mac = mac,
             )
         }
     }

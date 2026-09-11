@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  LY 方案直播预览用 PlayerView。
+  必须使用 surface_type="texture_view"：ExoPlayer 默认的 SurfaceView 无法可靠响应
+  View/graphicsLayer 的旋转、缩放变换（Surface 由系统单独合成），而眼镜摄像头传出的
+  画面固定旋转了 90°，需要在本地视图层旋转修正；TextureView 属于常规视图层级，
+  可完整应用 rotationZ/scale 变换。resize_mode=fit 保证画面等比不变形。
+-->
+<androidx.media3.ui.PlayerView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    app:resize_mode="fit"
+    app:surface_type="texture_view"
+    app:use_controller="false" />

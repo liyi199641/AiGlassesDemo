@@ -1,18 +1,16 @@
 package com.lw.ai.glasses.ui.appsettings
 
-import com.lw.ai.glasses.ui.base.viewmodel.BaseViewModel
+import BaseViewModel
 import android.content.Context
 import androidx.lifecycle.viewModelScope
 import com.blankj.utilcode.util.ToastUtils
 import com.fission.wear.glasses.sdk.AiAssistantClient
-import com.fission.wear.glasses.sdk.GlassesManage
 import com.fission.wear.glasses.sdk.config.AiAgentConfig
-import com.fission.wear.glasses.sdk.config.AiServerEnvironmentConfig
 import com.fission.wear.glasses.sdk.constant.GlassesConstant
-import com.fission.wear.glasses.sdk.constant.GlassesConstant.ChannelType
 import com.lw.ai.glasses.R
 import com.lw.ai.glasses.config.AiAssistantConnectionHelper
 import com.lw.ai.glasses.config.AppConfigLoader
+import com.lw.ai.glasses.config.SdkChannelResolver
 import com.lw.top.lib_core.data.datastore.AppDataManager
 import com.lw.top.lib_core.data.datastore.BluetoothDataManager
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -37,39 +35,17 @@ class AppSettingsViewModel @Inject constructor(
         viewModelScope.launch {
             loadSettings()
         }
-        viewModelScope.launch {
-            bluetoothDataManager.savedBluetoothAddress.collect { address ->
-                _uiState.update { it.copy(isDeviceBound = !address.isNullOrBlank()) }
-            }
-        }
     }
 
     private suspend fun loadSettings() {
         val snapshot = AppConfigLoader.loadSnapshot(appDataManager)
-        val deviceBound = !bluetoothDataManager.getBluetoothAddress().isNullOrBlank()
         _uiState.update {
             it.copy(
                 selectedEnvironment = snapshot.selectedEnvironment,
                 localEnvironmentBaseUrl = snapshot.localEnvironmentBaseUrl,
                 localEnvironmentWsUrl = snapshot.localEnvironmentWsUrl,
-                selectedChannel = snapshot.selectedChannel,
                 autoConnectAi = snapshot.autoConnectAi,
-                isDeviceBound = deviceBound,
             )
-        }
-    }
-
-    fun updateSdkChannel(channel: ChannelType) {
-        if (_uiState.value.isDeviceBound) {
-            ToastUtils.showLong(context.getString(R.string.sdk_channel_change_requires_unbind))
-            return
-        }
-        if (_uiState.value.selectedChannel == channel) return
-        viewModelScope.launch {
-            appDataManager.saveSdkChannelName(channel.name)
-            _uiState.update { it.copy(selectedChannel = channel) }
-            GlassesManage.disConnect(unpair = false)
-            reinitializeAiClient()
         }
     }
 
@@ -81,7 +57,7 @@ class AppSettingsViewModel @Inject constructor(
             if (enabled) {
                 AiAssistantConnectionHelper.connectIfEnabled(appDataManager, bluetoothDataManager)
             } else {
-                AiAssistantConnectionHelper.disconnect(context, appDataManager)
+                AiAssistantConnectionHelper.disconnect(context, appDataManager, bluetoothDataManager)
             }
         }
     }
@@ -93,7 +69,7 @@ class AppSettingsViewModel @Inject constructor(
     ) {
         val normalizedLocalBaseUrl = localBaseUrl?.trim().orEmpty()
         val normalizedLocalWsUrl = localWsUrl?.trim().orEmpty()
-        if (env == GlassesConstant.ServerEnvironment.LOCAL) {
+        if (env == GlassesConstant.ServerEnvironment.CUSTOM) {
             if (normalizedLocalBaseUrl.isBlank()) {
                 ToastUtils.showLong(context.getString(R.string.local_base_url_empty))
                 return
@@ -120,31 +96,32 @@ class AppSettingsViewModel @Inject constructor(
         }
         applyAiServerEnvironment(env, appliedLocalBaseUrl, appliedLocalWsUrl)
 
-        val channel = _uiState.value.selectedChannel
-        AiAssistantClient.getInstance().initializeAiClient(
-            AiAgentConfig(
-                context = context,
-                channel = channel,
-                aiModelType = GlassesConstant.AiModelVendor.DEFAULT,
-                serverEnvironment = env,
-                customServerEnvironment = if (env == GlassesConstant.ServerEnvironment.LOCAL) {
-                    AiServerEnvironmentConfig(
-                        baseUrl = appliedLocalBaseUrl,
-                        wsUrl = appliedLocalWsUrl,
-                    )
-                } else {
-                    null
-                },
-                enableDefaultPlaySimultaneousAudio = true,
-                enableDefaultPlayAgentAudio = true,
-                translationAudioStorageDirName = "transAudioFiles",
-            ),
-        )
-
         viewModelScope.launch {
+            val channel = SdkChannelResolver.loadForSdkInit(bluetoothDataManager, appDataManager)
+            AiAssistantClient.getInstance().initializeAiClient(
+                AiAgentConfig(
+                    context = context,
+                    channel = channel,
+                    aiModelType = GlassesConstant.AiModelVendor.DEFAULT,
+                    serverEnvironment = env,
+                    customServerEnvironment = if (env == GlassesConstant.ServerEnvironment.CUSTOM) {
+                        com.fission.wear.glasses.sdk.config.AiServerEnvironmentConfig(
+                            baseUrl = appliedLocalBaseUrl,
+                            wsUrl = appliedLocalWsUrl,
+                        )
+                    } else {
+                        null
+                    },
+                    enableDefaultPlaySimultaneousAudio = true,
+                    enableDefaultPlayAgentAudio = true,
+                    translationAudioStorageDirName = "transAudioFiles",
+                    aiDialogueLanguage = AiAssistantClient.getInstance().getAiDialogueLanguage(),
+                ),
+            )
+
             AiAssistantConnectionHelper.connectIfEnabled(appDataManager, bluetoothDataManager)
             appDataManager.saveEnvironment(env.name)
-            if (env == GlassesConstant.ServerEnvironment.LOCAL) {
+            if (env == GlassesConstant.ServerEnvironment.CUSTOM) {
                 appDataManager.saveLocalEnvironmentBaseUrl(appliedLocalBaseUrl)
                 appDataManager.saveLocalEnvironmentWsUrl(appliedLocalWsUrl)
             }
@@ -153,12 +130,12 @@ class AppSettingsViewModel @Inject constructor(
         _uiState.update {
             it.copy(
                 selectedEnvironment = env,
-                localEnvironmentBaseUrl = if (env == GlassesConstant.ServerEnvironment.LOCAL) {
+                localEnvironmentBaseUrl = if (env == GlassesConstant.ServerEnvironment.CUSTOM) {
                     appliedLocalBaseUrl
                 } else {
                     it.localEnvironmentBaseUrl
                 },
-                localEnvironmentWsUrl = if (env == GlassesConstant.ServerEnvironment.LOCAL) {
+                localEnvironmentWsUrl = if (env == GlassesConstant.ServerEnvironment.CUSTOM) {
                     appliedLocalWsUrl
                 } else {
                     it.localEnvironmentWsUrl
@@ -169,7 +146,7 @@ class AppSettingsViewModel @Inject constructor(
 
     fun saveLocalEnvironment(localBaseUrl: String, localWsUrl: String) {
         updateEnvironment(
-            env = GlassesConstant.ServerEnvironment.LOCAL,
+            env = GlassesConstant.ServerEnvironment.CUSTOM,
             localBaseUrl = localBaseUrl,
             localWsUrl = localWsUrl,
         )
@@ -180,8 +157,8 @@ class AppSettingsViewModel @Inject constructor(
         localBaseUrlOverride: String? = null,
         localWsUrlOverride: String? = null,
     ) {
-        val localConfig = if (env == GlassesConstant.ServerEnvironment.LOCAL) {
-            AiServerEnvironmentConfig(
+        val localConfig = if (env == GlassesConstant.ServerEnvironment.CUSTOM) {
+            com.fission.wear.glasses.sdk.config.AiServerEnvironmentConfig(
                 baseUrl = localBaseUrlOverride ?: _uiState.value.localEnvironmentBaseUrl,
                 wsUrl = localWsUrlOverride ?: _uiState.value.localEnvironmentWsUrl,
             )
@@ -193,26 +170,5 @@ class AppSettingsViewModel @Inject constructor(
         } else {
             AiAssistantClient.getInstance().applyServerEnvironmentToGlobals(env)
         }
-    }
-
-    private fun reinitializeAiClient() {
-        val state = _uiState.value
-        val snapshot = AppConfigLoader.Snapshot(
-            selectedEnvironment = state.selectedEnvironment,
-            localEnvironmentBaseUrl = state.localEnvironmentBaseUrl,
-            localEnvironmentWsUrl = state.localEnvironmentWsUrl,
-            selectedChannel = state.selectedChannel,
-            autoConnectAi = state.autoConnectAi,
-        )
-        AiAssistantClient.getInstance().initializeAiClient(
-            AiAgentConfig(
-                context = context,
-                channel = state.selectedChannel,
-                aiModelType = GlassesConstant.AiModelVendor.DEFAULT,
-                serverEnvironment = state.selectedEnvironment,
-                customServerEnvironment = AppConfigLoader.localCustomEnvironment(snapshot),
-                enableDefaultPlaySimultaneousAudio = false,
-            ),
-        )
     }
 }

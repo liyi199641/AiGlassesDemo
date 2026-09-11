@@ -1,20 +1,26 @@
 # LinWear Ai Glasses SDK 文档（中文版）
 
+> [English](README-en.md)
+
 ---
 
 ## 📚 目录 (TOC)
 - [1. 添加权限](#1-添加权限)
 - [2. 添加依赖（必须）](#2-添加依赖必须)
+    - [2.0+（推荐）](#20推荐按方案拆分)
+    - [从 1.x 升级到 2.0+](#从-1x-升级到-20)
 - [3. SDK 初始化](#3-sdk-初始化)
+    - [GlassesManage API 方案支持](#glassesmanage-api-方案支持)
 - [4. 搜索设备](#4-搜索设备)
 - [5. 连接设备](#5-连接设备)
-  - [5.1 连接 / 断开 BLE](#51-连接--断开-ble)
-  - [5.2 订阅 BLE + BT 连接状态（推荐）](#52-订阅-ble--bt-连接状态推荐)
-  - [5.3 手动重连 BT](#53-手动重连-bt)
+    - [5.1 连接 / 断开 BLE](#51-连接--断开-ble)
+    - [5.2 订阅 BLE + BT 连接状态（推荐）](#52-订阅-ble--bt-连接状态推荐)
+    - [5.3 手动重连 BT（LY / TB）](#53-手动重连-btly--tb)
 - [6. 同步文件](#6-同步文件)
 - [7. AI 助手功能](#7-ai-助手功能)
 - [8. AI 翻译](#8-ai-翻译)
 - [9. 直播](#9-直播)
+    - [9.6 直播体验配置（抖音 Key / 包名 / 签名）](#96-直播体验配置抖音-key--包名--签名)
 - [10. SDK Flow 流监听](#10-sdk-flow-流监听)
 - [11. 眼镜设置功能](#11-眼镜设置功能)
 - [12. OTA 升级](#12-ota-升级)
@@ -27,41 +33,70 @@
 <uses-permission android:name="android.permission.INTERNET"/>
 <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"/>
 <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>
-<!-- 蓝牙连接 -->
+    <!-- 蓝牙连接 -->
 <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
 <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
-<!-- 媒体文件同步 -->
+    <!-- 媒体文件同步 -->
 <uses-permission android:name="android.permission.ACCESS_WIFI_STATE"/>
 <uses-permission android:name="android.permission.CHANGE_WIFI_STATE"/>
 <uses-permission
 android:name="android.permission.NEARBY_WIFI_DEVICES"
 android:usesPermissionFlags="neverForLocation"
 tools:targetApi="33" />
-<!-- AI 翻译、音视频通话（手机端采集） -->
+    <!-- AI 翻译、音视频通话（手机端采集） -->
 <uses-permission android:name="android.permission.RECORD_AUDIO"/>
-<!-- 视频通话 -->
+    <!-- 视频通话 -->
 <uses-permission android:name="android.permission.CAMERA"/>
+    <!-- 直播前台服务 -->
+<uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 ```
 
 ---
 
 ## **2. 添加依赖（必须）**
+
+### 2.0+（推荐，按方案拆分）
+
+必选 `sdk-core`，再按设备方案引入对应模块（可多选）。`SdkConfig.channel` 须与已引入的方案一致。
+
 ```gradle
-implementation("com.fission.wear.glasses:sdk:lastVersion")
+// 必选
+implementation("com.fission.wear.glasses:sdk-core:last_version")
 implementation("io.reactivex.rxjava3:rxjava:3.1.6")
+
+// 按需（可多选）
+implementation("com.fission.wear.glasses:sdk-ly:last_version")    // LY
+implementation("com.fission.wear.glasses:sdk-rtk:last_version")   // RTK
+implementation("com.fission.wear.glasses:sdk-tb:last_version")  // TB
 ```
 
-必需依赖项：
-- settings.gradle 添加： maven { url = uri("https://repo.repsy.io/mvn/linwear/android") } 
-- settings.gradle 添加： maven { url = uri("https://maven.zego.im") }
-- 导入app/libs下的 aar/jar
-- RxJava3
-- RxAndroid
-- RxAndroidBle
-- OkHttp
-- Retrofit
-- UtilCodex
-- 详情参考settings.gradle
+> **最低系统版本**：Android 7.0（API 24）。宿主 App 的 `minSdk` 不得低于 24。
+
+### 从 1.x 升级到 2.0+
+
+1. **替换依赖**：移除 `com.fission.wear.glasses:sdk`，改为 `sdk-core` + 对应方案模块（`sdk-ly` / `sdk-rtk` / `sdk-tb`）。
+2. **删除杰理库**：曾在 `app/libs` 或通过 `files()` / `flatDir` 等方式手动引入杰理 OTA 库（如 `jl_bt_ota_*.aar`、`jl_bt_ota_*.jar`），请**全部删除**。
+3. **LyCmdConstant**：统一迁移到GlassesConstant
+4. **不要混用**：1.x 单体包与 2.0+ 模块请勿同时依赖。
+
+
+### 仓库配置
+
+在 `settings.gradle.kts` 中添加：
+
+```kotlin
+dependencyResolutionManagement {
+    repositories {
+        google()
+        mavenCentral()
+        maven { url = uri("https://repo.repsy.io/mvn/linwear/android") }
+        maven { url = uri("https://maven.zego.im") }
+        // 引入 sdk-tb 时还需
+        maven { url = uri("https://maven.topstepht.com/repository/maven-public/") }
+    }
+}
+```
+
 
 ### 宿主 App 的 SO 冲突处理
 SDK 内部已经对 `libc++_shared.so` 做了一层库侧兜底，但 Android 的 Native Library 冲突最终仍发生在宿主 `app` 的 APK/AAB 打包阶段。
@@ -80,6 +115,7 @@ android {
     }
 }
 ```
+
 ---
 
 ## **3. SDK 初始化**
@@ -122,6 +158,8 @@ GlassesManage.initialize(
         context = applicationContext,
         channel = GlassesConstant.ChannelType.LY,
         logLevel = LogUtils.V,
+        // productSeries = GlassesConstant.ProductSeries.T, // T 系列眼镜需显式指定；S 系列可省略
+        // deviceLensType = GlassesConstant.LensType.WIDE_ANGLE, // RTK 广角镜头需显式指定；平角可省略
     )
 )
 
@@ -139,14 +177,16 @@ AiAssistantClient.getInstance().initializeAiClient(
 
 `GlassesManage.initialize(SdkConfig(...))` 使用以下配置项：
 
-| 参数 | 类型 | 必填 | 默认值 | 说明 |
-|------|------|:----:|--------|------|
-| `isDebug` | `Boolean` | 是 | — | 是否为调试模式。建议传入 `BuildConfig.DEBUG`，与宿主 App 构建类型保持一致。 |
-| `context` | `Context` | 是 | — | 应用上下文，SDK 内部会取 `applicationContext` 使用。 |
-| `channel` | `GlassesConstant.ChannelType` | 是 | — | 眼镜硬件/协议渠道，决定 BLE 指令策略与能力差异。**必须与所连接眼镜方案一致**。 |
+| 参数 | 类型 | 必填 | 默认值 | 说明                                                                          |
+|------|------|:----:|--------|-----------------------------------------------------------------------------|
+| `isDebug` | `Boolean` | 是 | — | 是否为调试模式。建议传入 `BuildConfig.DEBUG`，与宿主 App 构建类型保持一致。                          |
+| `context` | `Context` | 是 | — | 应用上下文，SDK 内部会取 `applicationContext` 使用。                                     |
+| `channel` | `GlassesConstant.ChannelType` | 是 | — | 眼镜硬件/协议渠道，决定 BLE 指令策略与能力差异。**必须与所连接眼镜方案一致**。                                |
 | `logLevel` | `Int` | 否 | `LogUtils.V` | SDK 日志输出级别，使用 UtilCodex `LogUtils` 常量：`V`（最详细）→ `D` → `I` → `W` → `E`（最精简）。 |
-| `mediaFilesStorageDirName` | `String` | 否 | `"mediaFiles"` | 从眼镜同步的媒体文件保存目录名，位于 `context.filesDir` 下。 |
-| `aiImageRecognitionStorageDirName` | `String` | 否 | `"tempImages"` | AI 识图临时图片保存目录名，位于 `context.filesDir` 下。 |
+| `mediaFilesStorageDirName` | `String` | 否 | `"mediaFiles"` | 从眼镜同步的媒体文件保存目录名，位于 `context.filesDir` 下。                                    |
+| `aiImageRecognitionStorageDirName` | `String` | 否 | `"tempImages"` | AI 识图临时图片保存目录名，位于 `context.filesDir` 下。                                     |
+| `productSeries` | `GlassesConstant.ProductSeries` | 否 | `S` | LY方案：眼镜产品系列，影响媒体同步 Wi-Fi 模式能力与 ISP OTA 结果解析。**须与所连接眼镜硬件系列一致**。              |
+| `deviceLensType` | `GlassesConstant.LensType` | 否 | `LensType.FLAT_ANGLE` | 镜头类型。RTK 渠道同步 JPG 时，广角开启畸变校正，平角跳过。仅在 `initialize` 时传入生效。                    |
 
 **`channel` 可选值**：
 
@@ -156,6 +196,20 @@ AiAssistantClient.getInstance().initializeAiClient(
 | `ChannelType.LY` | LY 方案（Demo 默认） |
 | `ChannelType.RTK` | RTK 方案 |
 | `ChannelType.QC` | QC 方案 |
+
+**`productSeries` 可选值**：
+
+| 枚举 | 说明 | 支持的 Wi-Fi 同步模式 | 默认 Wi-Fi 模式 |
+|------|------|----------------------|----------------|
+| `ProductSeries.S` | S 系列（默认） | `AP_MODE`、`P2P_MODE` | `AP_MODE` |
+| `ProductSeries.T` | T 系列 | `AP_MODE` | `AP_MODE` |
+
+**`deviceLensType` 可选值**：
+
+| 枚举 | 说明 | RTK JPG 畸变校正 |
+|------|------|-----------------|
+| `LensType.FLAT_ANGLE` | 平角镜头（默认） | 关闭 |
+| `LensType.WIDE_ANGLE` | 广角镜头 | 开启 |
 
 > `GlassesManage.initialize` 仅**首次**调用生效；重复调用会被忽略，后续无法通过再次 `initialize` 修改 `SdkConfig`。
 
@@ -172,9 +226,10 @@ AiAssistantClient.getInstance().initializeAiClient(
 | `aiModelType` | `GlassesConstant.AiModelVendor` | 否 | `DEFAULT` | 大模型供应商标识，影响 AI 对话/翻译等请求路由。 |
 | `serverEnvironment` | `GlassesConstant.ServerEnvironment` | 否 | `DEV` | 预置 AI 服务环境（HTTP `baseUrl` + AI 服务 `wsUrl`）。当 `customServerEnvironment` 非空时被忽略。 |
 | `customServerEnvironment` | `AiServerEnvironmentConfig?` | 否 | `null` | 自定义 AI 服务地址；**优先级高于** `serverEnvironment`。 |
-| `enableDefaultPlaySimultaneousAudio` | `Boolean` | 否 | `true` | 是否由 SDK 自动播放实时同传（`simultaneous_audio`）下行 PCM 音频。设为 `false` 时，需自行订阅 `AgentAudioEvent.TranslationAudioSend` 处理播放；运行时仍可用 `setTranslationAudioPlaybackEnabled` 控制（见 [第 8 节](#实时翻译译文播放开关)）。 |
-| `enableDefaultPlayAgentAudio` | `Boolean` | 否 | `true` | 是否由 SDK 自动播放 AI 助手对话（Agent）下行 PCM 音频。设为 `false` 时，需自行订阅 `AgentAudioEvent.AgentAudioSend` 处理播放；运行时仍可用 `setAgentAudioPlaybackEnabled` 控制（见 [7.6](#76-ai-对话回复音频播放开关)）。 |
+| `enableDefaultPlaySimultaneousAudio` | `Boolean` | 否 | `true` | 是否由 SDK 自动播放实时同传（`simultaneous_audio`）下行 PCM 音频。设为 `false` 时 SDK 不自动播放；运行时仍可用 `setTranslationAudioPlaybackEnabled` 控制（见 [第 8 节](#实时翻译译文播放开关)）。 |
+| `enableDefaultPlayAgentAudio` | `Boolean` | 否 | `true` | 是否由 SDK 自动播放 AI 助手对话（Agent）下行 PCM 音频。设为 `false` 时 SDK 不自动播放；运行时仍可用 `setAgentAudioPlaybackEnabled` 控制（见 [7.6](#76-ai-对话回复音频播放开关)）。 |
 | `translationAudioStorageDirName` | `String` | 否 | `"transAudioFiles"` | 翻译/对话模式录音文件保存目录名，位于 `context.filesDir` 下。 |
+| `aiDialogueLanguage` | `Int` | 否 | `140` | AI 对话（眼镜按键收音）源语种 ID（`langType`）。默认 `140`（中文）。运行时可用 `setAiDialogueLanguage` 动态修改（见 [7.7](#77-ai-对话源语种)）。 |
 
 **`aiModelType` 可选值**：
 
@@ -194,6 +249,7 @@ AiAssistantClient.getInstance().initializeAiClient(
 | `CHINA`    | 正式（中国） |
 | `EUROPE`   | 正式（欧洲） |
 | `SINGAPORE` | 正式（新加坡） |
+| `CUSTOM`   | 自定义环境（需分别配置 `baseUrl` 与 `wsUrl`） |
 
 **`customServerEnvironment`（`AiServerEnvironmentConfig`）字段**：
 
@@ -211,7 +267,8 @@ AiAssistantClient.getInstance().initializeAiClient(
 | `eventFlow(): Flow<GlassesEvent>` | 眼镜 SDK 统一事件流。扫描、文件同步、OTA、直播、设备指令等结果均通过此 Flow 回调，请在 Application 或页面生命周期内订阅。 |
 | `connectionStateFlow(): StateFlow<GlassesConnectionState>` | **BLE + BT 聚合连接状态**（推荐）。SDK 内部维护，订阅即可展示连接/配对/音频状态；应用重启后会自动同步系统 BT 状态。 |
 | `currentConnectionState(): GlassesConnectionState` | 读取当前 BLE/BT 连接状态快照。 |
-| `reconnectBluetooth()` | 手动重连 BT（BREDR 配对 / A2DP·HFP）。需 BLE 已连接；**OTA 模式下自动跳过**。 |
+| `reconnectBluetooth()` | 手动重连蓝牙音频。需 BLE 已连接；**OTA 模式下 LY 会自动跳过**。 |
+| `syncAllMediaFile(wifiMode: WifiMode? = null)` | 发起媒体同步。`wifiMode` 为 `null` 时默认 `AP_MODE`；指定 `AP_MODE` 时 SDK 按 `productSeries` 自动选择对应 AP 连接方式。模式不在系列支持范围内时，将通过 `FileSyncEvent.Failed` 回调。 |
 
 说明：
 
@@ -219,7 +276,93 @@ AiAssistantClient.getInstance().initializeAiClient(
 - 预置环境：方式 A + `AiAgentConfig.serverEnvironment` 即可。
 - 自定义地址：使用方式 B，或在 `AiAgentConfig` 中传入 `customServerEnvironment`（**优先于** `serverEnvironment`）；不必两处重复配置。
 - 若在已连接 AI 服务后切换环境，需再次调用 `connectAiAssistant(...)` 或 `manualReconnect()`。
-- Demo 中的「自定义环境」对应 `GlassesConstant.ServerEnvironment.LOCAL`，需分别配置 `baseUrl` 与 `wsUrl`。
+- Demo 中的「自定义环境」对应 `GlassesConstant.ServerEnvironment.CUSTOM`，需分别配置 `baseUrl` 与 `wsUrl`。
+
+### **GlassesManage API 方案支持**
+
+`GlassesManage` 对外 API 统一，能力由 `SdkConfig.channel` 对应的策略实现。调用不支持的 API 通常为**空操作**（无事件 / 仅打日志），接入前请按渠道核对。
+
+图例：✓ 支持 · △ 部分支持 / 有差异 · — 不支持（空实现或占位）
+
+> **QC** 未在下表展开。TB 方案能力与 LY/RTK 存在差异，接入前请按渠道核对下表。
+
+#### 生命周期 / 扫描 / 连接
+
+| API | LY | RTK | TB | 说明            |
+|-----|:--:|:---:|:--:|---------------|
+| `initialize` / `isDebug` / `setProductSeries` | ✓ | ✓ | ✓ | 全渠道共用         |
+| `aiUplinkProfile` | ✓ | ✓ | ✓ | 返回渠道 AI 上行参数 |
+| `eventFlow` / `connectionStateFlow` / `currentConnectionState` | ✓ | ✓ | ✓ | 全渠道共用         |
+| `startScanBleDevices` / `stopScanBleDevices` | ✓ | ✓ | ✓ | 全渠道共用         |
+| `connect` / `disConnect` | ✓ | ✓ | ✓ | 解绑时清除配对信息（含经典蓝牙） |
+| `reconnectBluetooth` | ✓ | — | △ | LY：音频重连；TB：连接异常时重试 |
+
+#### OTA
+
+| API | LY | RTK | TB | 说明                             |
+|-----|:--:|:--:|:--:|--------------------------------|
+| `startOTA` | ✓ | — | ✓ | LY/TB：`FIRMWARE` / `WIFI_ISP`；RTK 请用下方接口 |
+| `startRtkOta` | — |✓ | —  | **仅 RTK**：BT + Wi‑Fi 双通道升级     |
+
+#### 直播 / 预览
+
+| API | LY | RTK | TB | 说明 |
+|-----|:--:|:---:|:--:|----|
+| `startLiveStreaming` | ✓ | ✓ | — | |
+| `stopLiveStreaming` | ✓ | ✓ | — | |
+| `startPushLiveStreaming` | — | ✓ | — | |
+| `setLivePreviewMicState` | — | ✓ | — | |
+| `setLivePreviewRotation` | — | ✓ | — | |
+
+#### 媒体 / 拍摄 / 同步
+
+| API | LY | RTK | TB | 说明 |
+|-----|:--:|:---:|:--:|------|
+| `takePicture` | ✓ | ✓ | ✓ | |
+| `setLifePhotoConfig` | — | ✓ | — | **仅 RTK**：高清拍照分辨率 / JPEG / 旋转 |
+| `setWifiApConfig` | — | ✓ | — | **仅 RTK**：修改 SoftAP 名称与密码 |
+| `startDeviceRecording` / `stopDeviceRecording` | ✓ | ✓ | ✓ | 录音 |
+| `startDeviceVideoRecording` / `stopDeviceVideoRecording` | ✓ | ✓ | ✓ | 录像 |
+| `getMediaFileCount` | ✓ | ✓ | ✓ | |
+| `syncAllMediaFile` | ✓ | △ | ✓ | RTK **仅 SoftAP**；TB/LY/RTK 的 `wifiMode` 实参可能被忽略；事件字段差异见 [§6](#6-同步文件) |
+
+#### AI 助手
+
+| API | LY | RTK | TB | 说明 |
+|-----|:--:|:---:|:--:|------|
+| `startAiAssistant` / `stopAiAssistant` / `interruptAiAssistant` | ✓ | ✓ | ✓ | |
+
+#### 设备信息 / 电源 / 时间
+
+| API | LY | RTK | TB | 说明 |
+|-----|:--:|:---:|:--:|------|
+| `getBatteryLevel` / `getActionState` / `getDeviceStorage` | ✓ | ✓ | ✓ | |
+| `requestDeviceVersionInfo` | ✓ | ✓ | ✓ | |
+| `rebootDevice` / `restoreFactorySettings` | ✓ | ✓ | ✓ | |
+| `setTime` | ✓ | — | ✓ | |
+
+#### 设置项
+
+| API | LY | RTK | TB | 说明                    |
+|-----|:--:|:---:|:--:|-----------------------|
+| `setLedBrightness` / `setVideoDuration` | ✓ | ✓ | ✓ | TB：`setVideoDuration` 入参为**秒**，下发时换算为**分钟** |
+| `setVoiceDuration` | — | ✓ | ✓ | TB：入参为**秒**，下发时换算为**分钟** |
+| `setGestureShortcut` / `resetGestureShortcuts` | ✓ | — | — |                       |
+| `setWearDetection` / `setScreenOrientation` | ✓ | ✓ | ✓ |                       |
+| `getDeviceSettingsState` | ✓ | ✓ | ✓ |                       |
+| `setOfflineVoiceLanguage` | ✓ | — | ✓ |                       |
+| `getVoiceWakeUp` | ✓ | ✓ | ✓ |                       |
+| `setVoiceWakeUp` | ✓ | △ | △ | RTK/TB 仅使用本地离线唤醒开关    |
+| `getDeviceSupportedFeatures` | ✓ | — | — |                       |
+
+#### 音量 / 音乐 / 通话
+
+| API | LY | RTK | TB | 说明 |
+|-----|:--:|:---:|:--:|------|
+| `setVolume` / `getVolume` | ✓ | — | ✓ | |
+| `upVolume` / `downVolume` | ✓ | ✓ | ✓ | |
+| `controlMusic` / `switchMusic` | ✓ | — | ✓ | |
+| `answerPhoneCall` / `hangUpPhoneCall` | ✓ | — | — | |
 
 ---
 
@@ -255,8 +398,8 @@ GlassesManage.startScanBleDevices(
         scanDuration = 120_000,
     ),
     scanSettings = ScanSettings.Builder()
-        .setScanMode(ScanSettings.SCAN_MODE_BALANCED)
-        .build(),
+            .setScanMode(ScanSettings.SCAN_MODE_BALANCED)
+            .build(),
     scanFilters = arrayOf(ScanFilter.Builder().build()),
 )
 
@@ -294,6 +437,8 @@ GlassesManage.connect(
 // 断开并释放 SDK 内部资源
 GlassesManage.disConnect(unpair = true)
 ```
+
+> `unpair = true`（默认）：断开连接，并清除手机系统蓝牙中的配对记录。需已申请 `BLUETOOTH_CONNECT`（Android 12+）。
 
 ### **5.2 订阅 BLE + BT 连接状态（推荐）**
 
@@ -362,9 +507,9 @@ val snapshot = GlassesManage.currentConnectionState()
 | `FAILED` | 配对/连接失败 |
 | `DISCONNECTED` | 音频已断开 |
 
-### **5.3 手动重连 BT**
+### **5.3 手动重连 BT（LY / TB）**
 
-当 `btState` 为 `FAILED` 或 `DISCONNECTED` 且 BLE 仍为 `CONNECTED` 时，可调用：
+**LY 渠道**：当 `btState` 为 `FAILED` 或 `DISCONNECTED` 且 BLE 仍为 `CONNECTED` 时，可调用：
 
 ```kotlin
 GlassesManage.reconnectBluetooth()
@@ -376,46 +521,139 @@ GlassesManage.reconnectBluetooth()
 - **OTA 模式（`isOtaMode = true`）下不会执行 BT 重连**
 - 需已申请 `BLUETOOTH_CONNECT`（Android 12+）
 
+**TB 渠道**：BLE 仍连接但蓝牙状态异常时，可同样调用上述 API 尝试恢复连接。
+
 ---
 
 ## **6. 同步文件**
 
-将眼镜内媒体文件同步到手机，需先完成 BLE 连接。同步过程通过 `GlassesManage.eventFlow()` 回调（`FileSyncEvent`）。
+将眼镜内媒体文件同步到手机，需先完成 BLE 连接。建议**先订阅** `GlassesManage.eventFlow()`，再调用 `syncAllMediaFile()`；进度与结果通过 `FileSyncEvent` 回调。
+
+> **AI 服务**：媒体同步需手机连接眼镜 Wi-Fi 热点，SDK 会在同步开始前**暂停 AI 服务**，在 `FileSyncEvent.BatchDownloadFinished` 或 `FileSyncEvent.Failed` 后**自动恢复 AI 服务**。详见 [7.1.1 占用 Wi-Fi 时的 AI 服务](#711-占用-wi-fi-时的-ai-服务)。
 
 ```kotlin
+// 1. 订阅同步事件（建议在 Application / ViewModel 初始化时注册一次）
 viewModelScope.launch {
     GlassesManage.eventFlow().collect { event ->
         when (event) {
-            is FileSyncEvent.ConnectSuccess -> { /* Wi-Fi 已连通，开始拉取 */ }
+            is FileSyncEvent.ConnectSuccess -> {
+                // Wi-Fi 已连通，开始拉取（LY / RTK 均会回调）
+            }
+
+            is FileSyncEvent.ThumbnailsReady -> {
+                // LY：缩略图列表就绪，可展示预览网格
+                val total = event.totalFileCount
+                event.thumbnails.forEach { thumb ->
+                    // thumb.fpath / thumb.index / thumb.thumbnailUrl
+                }
+            }
+
             is FileSyncEvent.DownloadProgress -> {
-                val progress = event.progress
+                // curFileIndex 为 0-based
+                val percent = event.progress          // 0~100
                 val index = event.curFileIndex
                 val total = event.totalFileCount
                 val speed = event.speed
             }
+
             is FileSyncEvent.DownloadSuccess -> {
                 val localPath = event.filePath
+                val fpath = event.fpath               // LY：与 ThumbnailItem.fpath 对应
+                val remoteUrl = event.remoteUrl       // LY 远程地址
+                val size = event.fileSizeInBytes
+                val modifiedTime = event.fileModifiedTime
+                // RTK：fpath / remoteUrl / fileModifiedTime 可能为空，以 filePath 为准
             }
+
+            is FileSyncEvent.DownloadSkipped -> {
+                // LY：单文件无效被跳过，不计入 successCount
+                val fpath = event.fpath
+            }
+
+            is FileSyncEvent.BatchDownloadFinished -> {
+                // 整批结束；以 successCount 为实际成功数
+                val success = event.successCount
+                val total = event.totalFileCount
+            }
+
             is FileSyncEvent.Failed -> {
-                // event.reason / event.code
+                val reason = event.reason
+                val code = event.code
             }
+
             else -> Unit
         }
     }
 }
 
-// wifiMode：AP_MODE（热点）或 P2P_MODE（Wi-Fi Direct），按眼镜固件能力选择
+// 2. 发起同步（按渠道见下方 LY / RTK 说明）
+GlassesManage.syncAllMediaFile()
+```
+
+### **LY 方案**
+
+```kotlin
+// 默认 AP_MODE
+GlassesManage.syncAllMediaFile()
+
+// S 系列可显式指定 P2P
 GlassesManage.syncAllMediaFile(GlassesConstant.WifiMode.P2P_MODE)
 ```
 
+**Wi-Fi 同步模式（`GlassesConstant.WifiMode`）**
+
+| 枚举 | 说明 | 适用系列 |
+|------|------|----------|
+| `AP_MODE` | AP 热点模式（SDK 按系列自动选择连接方式） | S、T |
+| `P2P_MODE` | Wi-Fi Direct | S |
+
+**系列与能力对照**
+
+| 系列 | 初始化示例 | 默认同步调用 |
+|------|-----------|-------------|
+| S（默认） | `productSeries = GlassesConstant.ProductSeries.S` 可省略 | `GlassesManage.syncAllMediaFile()` |
+| T | `productSeries = GlassesConstant.ProductSeries.T` | `GlassesManage.syncAllMediaFile()` |
+
+### **RTK 方案**
+
+RTK 渠道**仅支持 AP（SoftAP）** 同步，不支持 `P2P_MODE`。示例：
+
+```kotlin
+GlassesManage.syncAllMediaFile()
+
+// 或显式指定 AP 模式
+GlassesManage.syncAllMediaFile(GlassesConstant.WifiMode.AP_MODE)
+```
+
+**修改 SoftAP 名称与密码（仅 RTK）**：
+
+```kotlin
+GlassesManage.setWifiApConfig(
+    WifiApConfig(
+        ssid = "MyGlassAP",       // ASCII，1–32 字节
+        password = "rtkaiglass",  // ASCII，8–64 字节
+    ),
+)
+// 回调：CmdResultEvent.WifiApConfigResult(success)
+```
+
+> 仅支持 ASCII；长度按 ASCII 字节计。不满足约束时下发失败。LY / TB 为空操作。
+
+RTK 同步 JPG 时是否执行畸变校正，由 `SdkConfig.deviceLensType` 决定（见 [SdkConfig 参数说明](#sdkconfig-参数说明)）。
+
 **回调事件（`FileSyncEvent`）**
 
-| 事件 | 说明 |
-|------|------|
-| `ConnectSuccess` | 手机与眼镜 Wi-Fi 通道建立成功 |
-| `DownloadProgress` | 单文件下载进度（含序号、速率） |
-| `DownloadSuccess` | 单文件下载完成（含本地路径） |
-| `Failed` | 同步失败（含错误码） |
+| 事件 | 说明 | LY | RTK |
+|------|------|:--:|:---:|
+| `ConnectSuccess` | 手机与眼镜 Wi-Fi 通道建立成功 | ✓ | ✓ |
+| `ThumbnailsReady` | 全部缩略图 URL 就绪（`thumbnails` + `totalFileCount`） | ✓ | — |
+| `DownloadProgress` | 单文件下载进度（`progress` / `curFileIndex` / `totalFileCount` / `speed`） | ✓ | ✓ |
+| `DownloadSuccess` | 单文件下载完成（`filePath` / `fpath` / `fileSizeInBytes` 等） | ✓ | ✓ |
+| `DownloadSkipped` | 单文件无效被跳过，不计入成功数 | ✓ | — |
+| `BatchDownloadFinished` | 整批处理结束（`successCount` / `totalFileCount`） | ✓ | ✓ |
+| `Failed` | 同步失败（`reason` / `code`）；RTK 开启 AP / 连热点失败为 `3501` / `3504` 等，见 [35xx](#-rtk-softap-共用错误3501---3505) | ✓ | ✓ |
+
+`ThumbnailsReady.thumbnails` 元素类型为 `ThumbnailItem`（`fpath` / `index` / `thumbnailUrl`），可与 `DownloadSuccess.fpath` 关联预览项。RTK 方案不回调 `ThumbnailsReady`、`DownloadSkipped`；`DownloadSuccess` 中 `remoteUrl`、`fpath`、`fileModifiedTime` 可能为空。
 
 > 需定位、Wi-Fi 相关权限，见 [第 1 节](#1-添加权限) 与 Demo 中媒体同步页申请逻辑。
 
@@ -450,7 +688,8 @@ aiClient.initializeAiClient(
         ),
         enableDefaultPlaySimultaneousAudio = true, // true: SDK 自动播放同传音频
         enableDefaultPlayAgentAudio = true,        // true: SDK 自动播放 Agent 音频
-        translationAudioStorageDirName = GlassesConstant.DEFAULT_TRANS_AUDIO_FILES_STORAGE_DIR
+        translationAudioStorageDirName = GlassesConstant.DEFAULT_TRANS_AUDIO_FILES_STORAGE_DIR,
+        aiDialogueLanguage = 140,                  // AI 对话源语种 langType，默认 140（中文）
     )
 )
 
@@ -463,13 +702,24 @@ aiClient.connectAiAssistant(
     sk = sk
 )
 
+// 订阅 AI 对话进行中状态
+viewModelScope.launch {
+    aiClient.aiDialogueInProgressFlow().collect { inProgress ->
+        // 更新 UI：对话中指示、禁用重复触发等
+    }
+}
+
 // 统一订阅 AI 事件
 aiClient.aiAgentEventFlow().collect { event ->
     when (event) {
         is AgentEvent.AiAssistantConnectState -> Unit
-        is AgentEvent.AiAssistantResult -> Unit
+        is AgentEvent.AiAssistantResult -> {
+            val msg = event.data  // AiChatMessageDTO
+            // msg.question / msg.answer — 流式文本
+            // msg.answerAudioPath — TTS 音频 WAV 本地路径
+            // msg.isFinished — 本轮是否结束
+        }
         is AiTranslationEvent.AiTranslationResult -> Unit
-        is AgentAudioEvent.AgentAudioSend -> Unit
         else -> Unit
     }
 }
@@ -479,22 +729,79 @@ aiClient.aiAgentEventFlow().collect { event ->
 
 ### **7.1 生命周期与连接**
 - `AiAssistantClient.getInstance()`：获取单例入口。
-- `applyServerEnvironmentToGlobals(env, localWsUrl)`：同步预置 AI 服务环境；`LOCAL` 环境下可通过 `localWsUrl` 覆盖默认 AI 服务地址。可在 `initializeAiClient` 前后调用；已连接 AI 服务后切换环境需再次 `connectAiAssistant(...)` 或 `manualReconnect()`。
+- `applyServerEnvironmentToGlobals(env, localWsUrl)`：同步预置 AI 服务环境；`CUSTOM` 环境下可通过 `localWsUrl` 覆盖默认 AI 服务地址。可在 `initializeAiClient` 前后调用；已连接 AI 服务后切换环境需再次 `connectAiAssistant(...)` 或 `manualReconnect()`。
 - `applyServerEnvironmentToGlobals(serverConfig)`：同步自定义 AI 服务环境，支持上层直接传入 `baseUrl` 和 `wsUrl`。
 - `initializeAiClient(config: AiAgentConfig)`：初始化 AI 客户端运行时，创建 AI 服务 / 图片翻译 / 通话所需依赖。重复调用会先清理旧连接，但**不会自动重连**，需要之后再调用 `connectAiAssistant(...)`。如传入 `customServerEnvironment`，会优先使用该自定义环境。
 - `connectAiAssistant(deviceId, deviceName, deviceModel, clientId, sk)`：建立 AI 助手连接。通常在设备连接完成并拿到鉴权参数后调用。
 - `disconnect()`：断开 AI 服务、结束通话、清理图片翻译与内部协程。页面退出或设备断开时建议调用。
 - `manualReconnect()`：手动触发 AI 服务重连。收到 `AgentEvent.ReconnectRequired` 后可调用。
 
+#### **7.1.1 占用 Wi-Fi 时的 AI 服务**
+
+媒体同步、OTA、直播等流程需要手机切换/连接眼镜 Wi-Fi 热点（SoftAP 或 P2P），会与 AI 服务争用网络。SDK 在 **LY / RTK / TB** 各渠道内统一处理，**无需 App 手动暂停或恢复**：
+
+| 阶段 | SDK 行为 |
+|------|----------|
+| 流程开始 | **暂停 AI 服务**（结束当前 AI 会话并断开连接，短暂等待网络释放） |
+| 流程正常结束 | 收到 `FileSyncEvent.BatchDownloadFinished` / `OTAEvent.Success` / `LiveEvent.RespStop` 等成功结束事件，或 `FileSyncEvent.Failed` / `OTAEvent.Failed` / `LiveEvent.Failed` 等失败事件 → **自动恢复 AI 服务** |
+| 眼镜 BLE 断开 | 取消暂停标记，**不**主动恢复 AI 服务（由 `disconnect()` 等上层逻辑处理） |
+
+**会自动暂停 / 恢复 AI 服务的 GlassesManage API**：
+
+| API | LY | RTK | TB |
+|-----|----|----|-----|
+| `syncAllMediaFile()` | ✓ | ✓ | ✓ |
+| `startOTA()` / `startRtkOta()` | ✓ | ✓ | ✓（FIRMWARE） |
+| `startLiveStreaming()` | ✓ | ✓ | ✓ |
+| `stopLiveStreaming()` | ✓ | ✓ | ✓ |
+
+**若 App 自行实现占用 Wi-Fi 的流程**，可手动控制：
+
+| 时机 | 说明 | 对应 API |
+|------|------|----------|
+| 开始前 | 暂停 AI 服务 | `AiAssistantClient.beginWifiExclusiveSession()` |
+| 结束后 | 恢复 AI 服务 | `AiAssistantClient.endWifiExclusiveSession()` |
+
+```kotlin
+val ai = AiAssistantClient.getInstance()
+// 自定义占用 Wi-Fi 的流程前 — 暂停 AI 服务
+runBlocking { ai.beginWifiExclusiveSession() }
+// ... 你的 Wi-Fi 业务 ...
+// 流程结束 — 恢复 AI 服务
+ai.endWifiExclusiveSession()
+```
+
+> 若 App 尚未调用过 `connectAiAssistant(...)`，恢复 AI 服务时不会有可重连的会话。  
+> 旧接口 `suspendConnectionTemporarily()` / `resumeSuspendedConnection()` 仍可用，效果分别等同于暂停 / 恢复 AI 服务。
+
 ### **7.2 事件订阅**
 - `aiAgentEventFlow(): Flow<AiAgentBase>`：统一输出 AI 相关事件。
+- `aiDialogueInProgressFlow(): StateFlow<Boolean>`：AI 对话进行中状态（眼镜录音 / 等待回复 / TTS 下发）。设备开始录音或收到 TTS `start` 时为 `true`；收到 TTS `stop`、设备取消/打断录音、断开连接时为 `false`。可用于 UI 展示「对话中」指示或禁用重复触发。
+
+  Demo：`AiAssistantViewModel.observeAiDialogueState()` 订阅该 Flow 并更新 UI 状态。
+
 - 可能收到的事件类型：
   `AgentEvent`（连接状态、聊天结果、识图 / 图片翻译结果、音视频通话状态等）、
   `AiTranslationEvent`（翻译文本结果 / 失败）、
-  `AgentAudioEvent`（AI 聊天音频流 / 翻译音频流）、
   `LocalVadEvent`（本地 VAD 状态）。
 
-如果不启用 SDK 默认音频播放（`enableDefaultPlaySimultaneousAudio = false` 或 `enableDefaultPlayAgentAudio = false`），可自行订阅 `AgentAudioEvent` 处理 PCM 音频流。当前回调音频参数为 **PCM / 16000Hz / 单声道**。
+> **`AgentAudioEvent` 已废弃**：该事件类型已从 SDK 移除，不再通过 `aiAgentEventFlow()` 下发。下行 PCM 由 SDK 内部播放（受 `enableDefaultPlaySimultaneousAudio` / `enableDefaultPlayAgentAudio` 及运行时播放开关控制）。
+
+#### **AiChatMessageDTO**（`AgentEvent.AiAssistantResult` 载荷）
+
+`AgentEvent.AiAssistantResult.data` 为 `AiChatMessageDTO`，在一次对话轮次中可能多次下发（流式文本 / 最终结果）。
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `id` | `String?` | 消息 ID（STT / TTS 音频完成时下发，用于关联同轮问答） |
+| `question` | `Any?` | 用户输入：文本、图片路径等 |
+| `answer` | `Any?` | AI 回复文本（流式追加） |
+| `questionType` | `AiContentType` | 问题内容类型 |
+| `answerType` | `AiContentType` | 回复内容类型 |
+| `answerAudioPath` | `String?` | 本轮 TTS 音频 WAV 本地路径（TTS `stop` 或打断/新一轮时下发） |
+| `isFinished` | `Boolean` | 本轮是否结束（STT 识别完成、TTS `stop`、识图完成等时为 `true`） |
+
+`AiContentType` 枚举：`NONE`、`TEXT`、`IMAGE_PATH`、`IMAGE_FILE`、`AUDIO_DATA`。
 
 若初始化时仍允许 SDK 播放同传音频，但需要在**单次实时翻译会话内**让用户开关译文播放，可使用 `setTranslationAudioPlaybackEnabled` / `isTranslationAudioPlaybackEnabled`（见 [8. 实时翻译译文播放开关](#实时翻译译文播放开关)）。
 
@@ -509,17 +816,21 @@ aiClient.aiAgentEventFlow().collect { event ->
 | 场景 | 获取方式 | 说明 |
 |------|----------|------|
 | **语音 / 对话 / 同传翻译** | 使用整数 `langType` | SDK **未提供**单独的「翻译语种列表」HTTP 接口；`startAiTranslation(from, toList, ...)`、`startReceivingAudio(mode, language)` 中的 `from` / `language` / `toList` 均为后台约定的语种 ID（如 Demo 默认源语 `140`、目标语 `47`）。语种名称与列表由宿主维护，可参考 Demo `assets/languages.json`（字段：`name`、`nameEn`、`langType`、`code`）。 |
-| **图片翻译** | `getImageTransLangList(serviceType)` | 按服务商拉取支持语种，结果见 `AgentEvent.ImageTransLangListResult`。 |
+| **图片翻译** | `getImageTransLangList(serviceType)` | 按服务商拉取支持语种，结果见 `AgentEvent.ImageTransLangListResult`（含 `requestId`）。 |
 
 **图片翻译 — 获取语种列表**
 
+> **requestId 关联**：`getImageTransLangList`、`imageTrans`、`getVoiceRoomParams` 均为 HTTP 接口型请求，通过 `aiAgentEventFlow()` 异步回调。多次调用或退出 UI 后重新进入时，可能收到上一次请求的结果。调用方应保存 API 返回的 `requestId`，并在事件回调中校验 `event.requestId` 是否匹配；SDK 也会在发起新请求时取消同类型的上一次请求。
+
 ```kotlin
 val aiClient = AiAssistantClient.getInstance()
+var pendingLangListRequestId: Long? = null
 
 viewModelScope.launch {
     aiClient.aiAgentEventFlow().collect { event ->
         when (event) {
             is AgentEvent.ImageTransLangListResult -> {
+                if (event.requestId != pendingLangListRequestId) return@collect
                 event.languageList.forEach { lang ->
                     // lang.langType   — 语种 ID（用于 imageTrans 入参）
                     // lang.name       — 中文名
@@ -534,7 +845,9 @@ viewModelScope.launch {
 }
 
 // serviceType：VOLC_ENGINE(1) / ALIYUN(2) / MICROSOFT(3) / OPEN_AI(4)
-aiClient.getImageTransLangList(GlassesConstant.ImageTranslateServerType.VOLC_ENGINE)
+// 返回值 Long 为本次 requestId，未初始化 AI 客户端时返回 0
+pendingLangListRequestId =
+    aiClient.getImageTransLangList(GlassesConstant.ImageTranslateServerType.VOLC_ENGINE)
 ```
 
 `LanguageResult` 字段：`name`、`nameEn`、`langType`、`code`、`supportSource`、`supportTarget`。
@@ -551,14 +864,34 @@ aiClient.getImageTransLangList(GlassesConstant.ImageTranslateServerType.VOLC_ENG
 - `isTranslationAudioPlaybackEnabled()`：查询当前是否启用实时翻译下行播放。未初始化 AI 客户端时返回 `true`。
 
 ### **7.4 图片翻译相关方法**
-- `getImageTransLangList(serviceType)`：获取指定图片翻译服务商支持的语言列表。`serviceType` 可选 `VOLC_ENGINE`、`ALIYUN`、`MICROSOFT`、`OPEN_AI`。
-- `imageTrans(targetImage, sourceLanguage, targetLanguage)`：上传图片并请求图片翻译，结果通过 `AgentEvent.ImageTransResult` / `AgentEvent.ImageTransFailEvent` 返回。
+- `getImageTransLangList(serviceType): Long`：获取指定图片翻译服务商支持的语言列表。`serviceType` 可选 `VOLC_ENGINE`、`ALIYUN`、`MICROSOFT`、`OPEN_AI`。返回本次 `requestId`；结果通过 `AgentEvent.ImageTransLangListResult(requestId, languageList)` 回调。
+- `imageTrans(targetImage, sourceLanguage, targetLanguage): Long`：上传图片并请求图片翻译。返回本次 `requestId`；结果通过 `AgentEvent.ImageTransResult(requestId, imageBase64)` / `AgentEvent.ImageTransFailEvent(requestId, code, msg)` 回调。
+
+```kotlin
+var pendingImageTransRequestId: Long? = null
+
+pendingImageTransRequestId = aiClient.imageTrans(
+    targetImage = imageFile,
+    sourceLanguage = srcLangType,
+    targetLanguage = targetLangType,
+)
+
+// 在 aiAgentEventFlow() 中：
+is AgentEvent.ImageTransResult -> {
+    if (event.requestId != pendingImageTransRequestId) return@collect
+    // 处理翻译结果
+}
+is AgentEvent.ImageTransFailEvent -> {
+    if (event.requestId != pendingImageTransRequestId) return@collect
+    // 处理失败
+}
+```
 
 ### **7.5 语音房间 / 音视频通话相关方法**
 
 > **权限**：音视频通话需使用麦克风（及视频通话时的相机），请申请 `android.permission.RECORD_AUDIO`；视频通话另需 `android.permission.CAMERA`。
 
-- `getVoiceRoomParams(lang, target, type, appId, mac)`：获取即构语音房间参数。
+- `getVoiceRoomParams(lang, target, type, appId, mac): Long`：获取即构语音房间参数。返回本次 `requestId`；结果通过 `AgentEvent.VoiceRoomParamsEvent(requestId, params)` / `AgentEvent.VoiceRoomParamsFailEvent(requestId, code, msg)` 回调。上层应校验 `event.requestId` 后再调用 `startCall(...)`。
   `type = 1` 表示视频通话，`type = 2` 表示语音通话。
 - `startCall(appID, token, roomID, streamId, userID, isVideo, local, remote)`：开始音视频通话。
 - `updateLocalView(view)`：更新本地预览 `TextureView`。
@@ -580,7 +913,7 @@ aiClient.getImageTransLangList(GlassesConstant.ImageTranslateServerType.VOLC_ENG
 |----|------|
 | 控制范围 | TTS 二进制流与 `agent_audio` 的 SDK 自动播放 |
 | 与初始化配置关系 | 仍受 `enableDefaultPlayAgentAudio = false` 约束；该配置为 `false` 时，运行时开关无法开启播放 |
-| 禁用后 | 仍收到 `AgentAudioEvent.AgentAudioSend`；音频文件写入不受影响 |
+| 禁用后 | 不再自动播放；音频文件写入不受影响（`AgentAudioEvent` 已废弃，无 PCM 事件回调） |
 | 禁用时机 | 若当前有 TTS 流在播，会立即停止播放并清空待播队列，但**不会**中断 AI 对话会话 |
 
 - `setAgentAudioPlaybackEnabled(enabled)`：启用或禁用 AI 对话下行音频的 SDK 自动播放。
@@ -600,6 +933,38 @@ aiClient.setAgentAudioPlaybackEnabled(true)
 ```
 
 Demo：`AiAssistantScreen` 底部提供「回复播放：开 / 关」切换按钮，对应 `AiAssistantViewModel.toggleAgentAudioPlayback()`。
+
+### **7.7 AI 对话源语种**
+
+眼镜按键触发 AI 对话收音时，SDK 会使用配置中的源语种 ID（`langType`）调用 `startReceivingAudio`。可在初始化时通过 `AiAgentConfig.aiDialogueLanguage` 指定，也可在运行时动态修改。
+
+| 项 | 说明 |
+|----|------|
+| 作用范围 | 眼镜侧 AI 对话（按键收音），不含 App 主动调用的翻译 / 同传 |
+| 取值 | 后台约定的语种 ID（`langType`），如 `140`（中文）；可参考 Demo `assets/languages.json` |
+| 生效时机 | `setAiDialogueLanguage` 立即更新配置；若 AI 服务已连接，会 disconnect+release 并重建 WebSocket，让服务端重新 HELLO 初始化，同时清空本地会话状态。**重建完成并收到 HELLO 之前禁止开听**（眼镜按键会直接停麦）；可用 `isListenBlockedByWsReconnect()` 查询 |
+
+- `setAiDialogueLanguage(language)`：动态设置 AI 对话源语种，无需重新 `initializeAiClient`；已连接时会释放并重建 WS（本地 listen/TTS/识图等状态一并初始化），重建期间禁止 `startReceivingAudio` / 眼镜开听。
+- `getAiDialogueLanguage()`：查询当前 AI 对话源语种；未初始化 AI 客户端时返回默认值 `140`。
+- `isListenBlockedByWsReconnect()`：切语种后的 WS 重建是否仍在进行（HELLO 未就绪）；为 `true` 时请勿开听。
+
+```kotlin
+val aiClient = AiAssistantClient.getInstance()
+
+// 初始化时指定
+aiClient.initializeAiClient(
+    AiAgentConfig(
+        context = context,
+        channel = channel,
+        aiDialogueLanguage = 140, // 中文
+    )
+)
+
+// 运行时切换（例如用户在设置页更改对话语种）
+aiClient.setAiDialogueLanguage(47) // 英文等
+
+val currentLang = aiClient.getAiDialogueLanguage()
+```
 
 ## **8. AI 翻译**
 
@@ -691,7 +1056,7 @@ aiClient.stopReceivingAudio(mode)
 |----|------|
 | 控制范围 | 同传下行 `simultaneous_audio` 的 SDK 自动播放 |
 | 与初始化配置关系 | 仍受 `enableDefaultPlaySimultaneousAudio = false` 约束；该配置为 `false` 时，运行时开关无法开启播放 |
-| 禁用后 | 仍收到 `AgentAudioEvent.TranslationAudioSend`； |
+| 禁用后 | 不再自动播放（`AgentAudioEvent` 已废弃，无 PCM 事件回调） |
 
 ```kotlin
 val aiClient = AiAssistantClient.getInstance()
@@ -729,18 +1094,17 @@ Demo：`AiAssistantClient.resolveSimultaneousInterpretationAudioPolicy()` → `S
 |------|------|------|
 | `AiTranslationEvent` | `AiTranslationResult` | 翻译文本结果 |
 | | `Failed` | 翻译失败 |
-| `AgentAudioEvent` | `TranslationAudioStart` / `TranslationAudioSend` / `TranslationAudioStop` | 翻译下行音频流（PCM 16k 单声道） |
 | `AgentEvent` | `AiAssistantConnectState` | AI 服务连接状态 |
 
 ### ✅ 自定义大模型（App 自己实现）
 如需开启自定义模式 请联系开发人员。
 
-- **GlassesManage.startAiAssistant**：开始录音 
-  - AudioStateEvent.ReceivingAudioData：持续接收录音数据
+- **GlassesManage.startAiAssistant**：开始录音
+    - AudioStateEvent.ReceivingAudioData：持续接收录音数据
 - **GlassesManage.stopAiAssistant()**：停止录音
 - **GlassesManage.interruptAiAssistant()**：打断录音
 - **GlassesManage.takePicture(true)**：AI 识图（`takePhotoOnly = true` 时图片回传 App；`false` 时保存到眼镜，见 [11.8 设备侧采集与拍照](#8️⃣-设备侧采集与拍照)）
-  - 回调事件：`CmdResultEvent.ImageData` / `CmdResultEvent.ImageFile`
+    - 回调事件：`CmdResultEvent.ImageData` / `CmdResultEvent.ImageFile`
 ---
 
 
@@ -748,20 +1112,39 @@ Demo：`AiAssistantClient.resolveSimultaneousInterpretationAudioPolicy()` → `S
 
 眼镜端发起 RTSP 推流，手机 App 订阅 `LiveEvent` 获取地址后可本地预览，或二次推流到第三方平台（Demo 支持抖音直播）。
 
-**前置条件**：BLE 已连接；部分渠道需 Wi-Fi / 定位相关权限（参考 Demo 直播页）。建议先调用 `getDeviceSupportedFeatures()` 确认设备是否支持直播。
+> **AI 服务**：开播前 SDK 会**暂停 AI 服务**；`stopLiveStreaming()`、直播失败（`LiveEvent.Failed` / `PreviewFailed` / `Disconnected`）或停止（`RespStop`）后**自动恢复 AI 服务**。详见 [7.1.1](#711-占用-wi-fi-时的-ai-服务)。
+
+**前置条件**（`startLiveStreaming` 会在 SDK 内校验，不满足则回调 `LiveEvent.Failed`）：
+
+- 眼镜 **BLE 已连接**（3201）
+- 手机 **Wi‑Fi 已开启**（3210；AP 模式需连眼镜热点）
+- 手机 **蜂窝数据已开启**（3214；检测系统开关，非当前 Internet 连接；用于第三方平台 API / RTMP 推流）
+
+部分渠道还需 Wi‑Fi / 定位相关权限（参考 Demo 直播页）。
 
 ```kotlin
 viewModelScope.launch {
     GlassesManage.eventFlow().collect { event ->
         when (event) {
-            is LiveEvent.LiveSuccess -> {
-                val rtspUrl = event.rtsp  // 眼镜 RTSP 地址
+            is LiveEvent.RespSuccess -> {
+                val rtspUrl = event.rtsp  // 眼镜开启推流成功，RTSP 地址
             }
             is LiveEvent.Failed -> {
-                // event.reason / event.code
+                // 开播前置失败（未进入预览）；优先按 event.code 定制 UI
+                val code = event.code
+                val reason = event.reason
+            }
+            is LiveEvent.PreviewFailed -> {
+                // RTK 预览启动失败；优先按 event.code 定制 UI
+            }
+            is LiveEvent.Disconnected -> {
+                // 预览/推流异常断连；优先按 event.code 定制 UI
             }
             LiveEvent.RespStop -> {
                 // 直播已停止
+            }
+            LiveEvent.StoppedByNotification -> {
+                //通知栏结束直播    
             }
             else -> Unit
         }
@@ -774,11 +1157,15 @@ GlassesManage.startLiveStreaming(
         videoPictureHeight = 720,
         fps = 30,
         bps = 1_000_000,
-        liveChannel = GlassesConstant.LiveChannel.WIFI_STATION,
+        maxQp = 0,
+        minQp = 0,
+        videoBitRateMode = GlassesConstant.VideoBitRateMode.VBR,
+        previewView = previewView,
+        mode = LiveStreamingMode.PREVIEW
     )
 )
 
-// 将 RTSP 流转推到第三方（如 RTMP）；具体实现因渠道而异
+// 预览就绪后，将直播流推到第三方（如抖音返回的 RTMP 地址）
 GlassesManage.startPushLiveStreaming("rtmp://your-push-url")
 
 GlassesManage.stopLiveStreaming()
@@ -786,9 +1173,10 @@ GlassesManage.stopLiveStreaming()
 
 | API | 说明 |
 |-----|------|
-| `startLiveStreaming(liveStreamingConfig)` | 启动眼镜端直播推流 |
-| `startPushLiveStreaming(liveUrl)` | 将直播流推送到第三方地址（如 RTMP URL） |
-| `stopLiveStreaming()` | 停止直播 |
+| `startLiveStreaming(liveStreamingConfig)` | 启动眼镜端直播（Wi-Fi AP）；绑定 `previewView` 并开启本地预览 |
+| `startPushLiveStreaming(liveUrl)` | 预览就绪后，将 RTSP 流推到第三方返回的 RTMP 地址 |
+| `stopLiveStreaming()` | 停止预览/推流，释放播放器，恢复 AI 服务 |
+| `ensureGlassesWifiApConnected(callback)` | **仅 WiFi 重连**：`RespSuccess` 后强制手机重连眼镜热点；正常开播流程无需调用 |
 
 **`LiveStreamingConfig` 参数**：
 
@@ -798,25 +1186,88 @@ GlassesManage.stopLiveStreaming()
 | `videoPictureHeight` | `Int` | `720` | 视频高度 |
 | `fps` | `Int` | `30` | 帧率 |
 | `bps` | `Int` | `1000000` | 码率（bps） |
-| `liveChannel` | `GlassesConstant.LiveChannel` | `WIFI_AP` | 直播传输通道 |
-
-**`liveChannel` 可选值**：
-
-| 枚举 | 说明 |
-|------|------|
-| `WIFI_AP` | Wi-Fi 热点模式 |
-| `WIFI_STATION` | Wi-Fi Station 模式 |
-| `BT` | 蓝牙通道 |
+| `maxQp` | `Int` | `0` | 视频编码最大 QP（RTK）；`0` 表示设备默认 |
+| `minQp` | `Int` | `0` | 视频编码最小 QP（RTK）；`0` 表示设备默认 |
+| `videoBitRateMode` | `VideoBitRateMode` | `VBR` | 码率模式：`CBR` 恒定码率 / `VBR` 可变码率（RTK） |
+| `pushUrl` | `String?` | `null` | RTMP 推流地址；`null` 且 `mode` 为 `PREVIEW` 时仅预览 |
+| `previewView` | `RTKVideoView?` | `null` | RTK 预览视图 |
+| `mode` | `LiveStreamingMode` | `PREVIEW` | 直播模式：`PREVIEW` 仅预览 / `PUSH` 仅推流 / `PREVIEW_PUSH` 预览+推流 |
 
 **回调事件（`LiveEvent`）**：
 
-| 事件 | 说明 |
-|------|------|
-| `LiveSuccess` | 推流成功，含 RTSP 地址 |
-| `Failed` | 推流失败 |
-| `RespStop` | 直播已停止 |
+| 事件 | 字段 | 说明 |
+|------|------|------|
+| `RespSuccess` | `rtsp` | 眼镜开启推流成功，含 RTSP 地址 |
+| `PreviewStarted` | — | 预览就绪（RTK 可能回调两次：连 AP / 出流） |
+| `PreviewFailed` | `reason`, `code` | RTK 预览播放器启动失败 |
+| `Failed` | `reason`, `code` | 开播前置失败（未进入预览） |
+| `Disconnected` | `reason`, `code` | 预览或推流阶段异常断连 |
+| `RespStop` | — | 直播已停止 |
 
-> Demo：`LiveViewModel` + `LiveScreen`。直播能力与参数解析因渠道（LY / RTK 等）及固件版本而异，接入前请确认 `SdkConfig.channel`。
+**错误码与默认文案（App 定制 UI）**：
+
+- 直播会话错误：`GlassesConstant.ERROR_CODE_LIVE_*`（3201–3214，不含 AP 链路）
+- **RTK 开启 AP / 连热点**（与 OTA、媒体同步共用）：`GlassesConstant.ERROR_CODE_RTK_*`（3501–3505），别名见 `RtkSoftApErrors` / `LiveStreamErrors.CODE_HOTSPOT_*`、`CODE_WIFI_JOIN_*`
+- 默认说明：`LiveStreamErrors.defaultReason(code)`、`RtkSoftApErrors.defaultReason(code)`
+- **App 应优先根据 `code` 展示文案**；`reason` 为 SDK 默认说明，可作兜底或日志
+
+```kotlin
+import com.fission.wear.glasses.sdk.live.LiveStreamErrors
+
+when (event) {
+    is LiveEvent.Disconnected -> {
+        when (event.code) {
+            LiveStreamErrors.CODE_WIFI_JOIN_REJECTED -> showWifiJoinRejectedDialog()
+            LiveStreamErrors.CODE_PHONE_WIFI_OFF -> showPhoneWifiOffHint()
+            else -> showMessage(
+                appMessageFor(event.code) ?: LiveStreamErrors.defaultReason(event.code).ifBlank { event.reason }
+            )
+        }
+    }
+    else -> Unit
+}
+```
+
+完整错误码表见 [第 13 节 · RTK SoftAP 共用（3501–3505）](#-rtk-softap-共用错误3501---3505) 与 [直播错误（3201–3214）](#-直播错误3201---3214)。
+
+> Demo：`LiveViewModel` + `LiveScreen`。直播能力与参数解析因渠道（LY / RTK / TB 等）及固件版本而异，接入前请确认 `SdkConfig.channel`。
+
+### **9.6 直播体验配置（抖音 Key / 包名 / 签名）**
+
+Demo（`app` 模块）对接抖音直播时，需使用与抖音开放平台登记一致的 **应用包名、签名（jks）以及抖音 appId / appName**。为方便在不同客户/渠道间快速切换，这些参数已统一抽离到根目录的本地配置文件 `douyin.properties`，**改配置即可切换，无需改动任何代码**。
+
+**配置文件**：项目根目录的 `douyin.properties`（含各字段说明，直接编辑即可生效）。
+
+**使用步骤**：
+
+1. 编辑 `douyin.properties`，将 `CONFIG_ENABLED` 设为 `true`，并填入对应客户/渠道的值：
+
+   | Key | 说明 | 示例 |
+      |-----|------|------|
+   | `CONFIG_ENABLED` | 总开关；`false` 或文件缺失时不配置签名，用 Studio 默认 `debug.keystore` 打包 | `true` |
+   | `APPLICATION_ID` | 应用包名，需与抖音后台登记一致 | `com.xxx.xxx.xxx` |
+   | `KEY_STORE_FILE` | jks 签名文件路径（相对项目根目录） | `key/xxx.jks` |
+   | `KEY_STORE_PASSWORD` | keystore 密码 | — |
+   | `KEY_ALIAS` | 签名别名 | — |
+   | `KEY_PASSWORD` | 别名对应密码 | — |
+   | `DOUYIN_APP_ID` | 抖音开放平台 appId（ClientKey） | `1032728` |
+   | `DOUYIN_APP_NAME` | 应用名称（与抖音后台一致） | `LwGlass` |
+   | `DOUYIN_CLIENT_KEY` | 抖音开放平台申请的 ClientKey，`DouYinEntryActivity` 授权回调使用 | — |
+   | `DOUYIN_CLIENT_SECRET` | 抖音开放平台申请的 ClientSecret，`DouYinEntryActivity` 授权回调使用 | — |
+
+2. 将 `.jks` 签名文件放到 `KEY_STORE_FILE` 指定路径。
+3. Gradle Sync / 重新构建即可生效。
+
+> 填写包名、签名密码、抖音 Key 等敏感信息后，请勿将 `douyin.properties` 提交到版本库。
+
+**配置生效位置**：
+
+| 配置项 | 生效位置 |
+|--------|----------|
+| `CONFIG_ENABLED` | 总开关；关闭时下方配置均不生效，debug / release 均用默认 `debug.keystore` 签名 |
+| `APPLICATION_ID` / `KEY_*` | `app/build.gradle.kts` 的 `signingConfigs` 与 `defaultConfig.applicationId` |
+| `DOUYIN_APP_ID` / `DOUYIN_APP_NAME` | 注入 `lib_core` 的 `BuildConfig`，由 `DouYinRepository.initDouyinSdk` 中 `BroadcastInitConfig.Builder` 使用 |
+| `DOUYIN_CLIENT_KEY` / `DOUYIN_CLIENT_SECRET` | 注入 `app` 的 `BuildConfig`，由授权回调 `DouYinEntryActivity` 使用 |
 
 ---
 
@@ -826,6 +1277,8 @@ GlassesManage.stopLiveStreaming()
 
 ### **通用 - CmdResultEvent**
 - 设备设置、设备状态、媒体文件、电量、按键动作等结果请关注 `CmdResultEvent` 子类
+- RTK 高清拍照参数：`CmdResultEvent.LifePhotoConfigResult(success)`（见 [11.8](#8️⃣-设备侧采集与拍照)）
+- RTK SoftAP 名称/密码：`CmdResultEvent.WifiApConfigResult(success)`（见下方 [§6 RTK](#rtk-方案)）
 
 
 ### **① 搜索设备 - ScanStateEvent**
@@ -848,25 +1301,28 @@ GlassesManage.stopLiveStreaming()
 | `BtConnectEvent` | `Bonding` / `Bonded` / `BondFailed` | 经典蓝牙配对（LY 等方案，SDK 内部驱动） |
 | | `A2dpConnected` / `HfpConnected` 等 | 音频 Profile 状态变化 |
 
-手动重连 BT：`GlassesManage.reconnectBluetooth()`（见 [第 5.3 节](#53-手动重连-bt)）。
+手动重连 BT：**LY / TB** 见 [第 5.3 节](#53-手动重连-btly--tb)。
 
 ### **③ 音频流 - AudioStateEvent**
 - 参考 Demo
 
 ### **④ 同步媒体文件 - FileSyncEvent**
-- `ConnectSuccess`：连接 Wi-Fi 成功
-- `DownloadProgress`：下载进度
-- `DownloadSuccess`：同步成功
-- `Failed`：同步失败
+- `ConnectSuccess`：Wi-Fi 连接成功
+- `ThumbnailsReady(thumbnails, totalFileCount)`：缩略图列表就绪（LY）；`thumbnails` 为 `ThumbnailItem(fpath, index, thumbnailUrl)`
+- `DownloadProgress(progress, curFileIndex, totalFileCount, speed)`：下载进度
+- `DownloadSuccess(filePath, curFileIndex, totalFileCount, remoteUrl, fileSizeInBytes, fileModifiedTime, fpath)`：单文件下载成功
+- `DownloadSkipped(curFileIndex, totalFileCount, fpath)`：单文件无效跳过（LY）
+- `BatchDownloadFinished(successCount, totalFileCount)`：整批下载结束
+- `Failed(reason, code)`：同步失败
 
 ### **⑤ AI 助手 - AgentEvent**
 - `AgentEvent.AiAssistantConnectState`：AI 服务连接状态
-- `AgentEvent.AiAssistantResult`：AI 聊天结果
+- `AgentEvent.AiAssistantResult`：AI 聊天结果，载荷为 `AiChatMessageDTO`（见 [7.2](#72-事件订阅)）
 - `AgentEvent.AiScheduleResult`：日程类 MCP 返回
-- `AgentEvent.ImageTransLangListResult`：图片翻译语言列表
-- `AgentEvent.ImageTransResult`：图片翻译结果
-- `AgentEvent.ImageTransFailEvent`：图片翻译失败
-- `AgentEvent.VoiceRoomParamsEvent` / `VoiceRoomParamsFailEvent`：语音房间参数获取结果
+- `AgentEvent.ImageTransLangListResult(requestId, languageList)`：图片翻译语言列表
+- `AgentEvent.ImageTransResult(requestId, imageBase64)`：图片翻译结果
+- `AgentEvent.ImageTransFailEvent(requestId, code, msg)`：图片翻译失败
+- `AgentEvent.VoiceRoomParamsEvent(requestId, params)` / `VoiceRoomParamsFailEvent(requestId, code, msg)`：语音房间参数获取结果
 - `AgentEvent.CallConnected` / `CallDisconnected`：通话接通 / 断开
 - `AgentEvent.RemoteVideoStateEvent`：远端视频开关状态
 - `AgentEvent.RemoteLanguageEvent`：远端语种变化
@@ -878,9 +1334,9 @@ GlassesManage.stopLiveStreaming()
 - `AiTranslationResult`：大模型返回翻译结果
 - `Failed`：错误
 
-### **⑦ AI 音频流 - AgentAudioEvent**
-- `AgentAudioStart` / `AgentAudioSend` / `AgentAudioStop`：AI 聊天音频流
-- `TranslationAudioStart` / `TranslationAudioSend` / `TranslationAudioStop`：AI 翻译音频流
+### **⑦ AI 音频流 - AgentAudioEvent（已废弃）**
+
+> **`AgentAudioEvent` 已废弃并从 SDK 移除**，不再通过 `aiAgentEventFlow()` 下发。下行音频由 SDK 内部播放，受 `enableDefaultPlaySimultaneousAudio` / `enableDefaultPlayAgentAudio` 及 `setTranslationAudioPlaybackEnabled` / `setAgentAudioPlaybackEnabled` 控制；文本与业务结果仍通过 `AgentEvent` / `AiTranslationEvent` 回调。
 
 ---
 ### **⑧ OTA 升级 - OTAEvent**
@@ -941,9 +1397,13 @@ when (event) {
 ```
 
 ### **⑩ 直播 - LiveEvent**
-- `LiveSuccess`：推流成功，含 RTSP 地址
-- `Failed`：推流失败
+- `RespSuccess(rtsp)`：眼镜开启推流成功，含 RTSP 地址
+- `PreviewStarted`：预览就绪
+- `PreviewFailed(reason, code)`：预览启动失败
+- `Failed(reason, code)`：开播前置失败
+- `Disconnected(reason, code)`：预览/推流异常断连
 - `RespStop`：直播已停止
+- `WifiApReady(ssid, password)`：眼镜热点凭证（WiFi 重连用）
 
 ### **⑪ SDK 全局错误 - SdkErrorEvent**
 - `GlobalError`：SDK 未初始化等全局错误（如错误码 `1001`）
@@ -966,7 +1426,8 @@ GlassesManage.getDeviceSettingsState()
 **回调事件**：`CmdResultEvent.DeviceSettingsStateEvent`  
 **载荷** `DeviceSettingsStateDTO` 字段说明：
 - `ledBrightness`：`LyCmdConstant.LedBrightnessLevel?`（LED 亮度档位）
-- `recordDuration`：`Int?`（录像时长）
+- `recordDuration`：`Int?`（录像时长，**秒**）
+- `audioRecordDuration`：`Int?`（录音时长，**秒**）
 - `systemVolume` / `mediaVolume` / `callVolume`：`Int?`（系统 / 媒体 / 通话音量）
 - `wearDetectionEnabled`：`LyCmdConstant.WearDetectionState?`（佩戴检测）
 - `voiceCommandEnabled`：`Boolean?`（语音指令相关状态）
@@ -982,7 +1443,8 @@ GlassesManage.getDeviceSettingsState()
 | API | 说明 |
 |-----|------|
 | `setLedBrightness(level: LyCmdConstant.LedBrightnessLevel)` | LED 亮度（`LOW` / `MEDIUM` / `HIGH`） |
-| `setVideoDuration(times: Int)` | 录像时长 |
+| `setVideoDuration(times: Int)` | 录像时长上限（**秒**） |
+| `setVoiceDuration(times: Int)` | 录音时长上限（**秒**） |
 | `setWearDetection(state: LyCmdConstant.WearDetectionState)` | 佩戴检测（`OFF` / `ON`） |
 | `setGestureShortcut(gesture: LyCmdConstant.GestureType, action: LyCmdConstant.GestureAction)` | 单条手势快捷方式 |
 | `resetGestureShortcuts()` | 恢复手势快捷方式为默认 |
@@ -1001,6 +1463,12 @@ GlassesManage.setGestureShortcut(
 )
 GlassesManage.setScreenOrientation(LyCmdConstant.ScreenOrientation.LANDSCAPE)
 ```
+
+**TB 方案说明**：
+
+- `setVideoDuration` / `setVoiceDuration` 的入参与 LY/RTK 一致，单位为**秒**。
+- TB 设备侧以**分钟**存储时长，SDK 下发时会将秒数**向上取整**为分钟（不足 1 分钟按 1 分钟计）。
+- 读取 `getDeviceSettingsState()` 时，`recordDuration` / `audioRecordDuration` 仍会以**秒**返回（SDK 已做换算）。
 
 ---
 
@@ -1085,6 +1553,7 @@ GlassesManage.getActionState()      // CmdResultEvent.ActionSync（type: ActionS
 | `startDeviceVideoRecording()` | 开始眼镜端录像 |
 | `stopDeviceVideoRecording()` | 停止眼镜端录像 |
 | `takePicture(takePhotoOnly: Boolean)` | 拍照。`true`：AI 识图，图片回传 App；`false`：保存到眼镜本地存储 |
+| `setLifePhotoConfig(config: LifePhotoConfig)` | **仅 RTK**：配置高清拍照参数（分辨率 / JPEG 质量 / 旋转）。异步结果见 `CmdResultEvent.LifePhotoConfigResult` |
 
 ```kotlin
 GlassesManage.startDeviceRecording()
@@ -1095,11 +1564,24 @@ GlassesManage.stopDeviceVideoRecording()
 
 GlassesManage.takePicture(takePhotoOnly = true)   // AI 识图
 GlassesManage.takePicture(takePhotoOnly = false)  // 保存到眼镜
+
+// RTK：配置高清拍照参数（须在 takePicture(false) 前按需调用）
+GlassesManage.setLifePhotoConfig(
+    LifePhotoConfig(
+        photoWidth = 2560,
+        photoHeight = 1440,
+        jpegQuality = LifePhotoConfig.JPEG_QUALITY_MAX, // 1–9
+        rotationDegrees = 0, // 0 / 90 / 180 / 270
+    ),
+)
 ```
 
 **回调事件**：
 - 拍照 / 识图：`CmdResultEvent.ImageData`（原始字节）或 `CmdResultEvent.ImageFile`（本地文件路径，视渠道而定）
+- 高清拍照参数（RTK）：`CmdResultEvent.LifePhotoConfigResult(success)`
 - 自定义大模型录音：见 [8. 自定义大模型](#-自定义大模型app-自己实现) 中的 `AudioStateEvent`
+
+> 分辨率须为传感器实际支持值；`jpegQuality` 范围 1–9；`rotationDegrees` 仅 0/90/180/270。LY / TB 调用为空操作。
 
 ---
 
@@ -1107,11 +1589,13 @@ GlassesManage.takePicture(takePhotoOnly = false)  // 保存到眼镜
 
 需先完成 BLE 连接。升级过程通过 `GlassesManage.eventFlow()` 回调 `OTAEvent`（见 [第 10 节](#-ota-升级---otaevent)）。
 
+> **AI 服务**：OTA 开始前 SDK 会**暂停 AI 服务**；收到 `OTAEvent.Success` / `Failed` / `Cancelled` 后**自动恢复 AI 服务**。与媒体同步、直播等占用 Wi-Fi 的流程相同，详见 [7.1.1](#711-占用-wi-fi-时的-ai-服务)。
+
 ```kotlin
 GlassesManage.startOTA(
     path = "/path/to/firmware.bin",
     type = GlassesConstant.OtaType.FIRMWARE,
-    version = "",  // WIFI_ISP 升级时可传目标版本号
+    version = "",  // 见下方各渠道说明
 )
 ```
 
@@ -1119,23 +1603,84 @@ GlassesManage.startOTA(
 |------|------|------|
 | `path` | `String` | 本地固件文件绝对路径 |
 | `type` | `GlassesConstant.OtaType` | OTA 类型 |
-| `version` | `String` | 可选，默认 `""`；`WIFI_ISP` 升级时可传目标版本号 |
+| `version` | `String` | 可选，默认 `""`；**TB BLE OTA** 需四段式目标版本（见下方 TB 说明）；LY `WIFI_ISP` 可传目标版本号 |
 
 **`OtaType` 可选值**：
 
 | 枚举 | 说明 |
 |------|------|
-| `FIRMWARE` | 主固件 OTA |
-| `WIFI_ISP` | Wi-Fi / ISP 模块 OTA |
+| `FIRMWARE` | 主固件 OTA（LY BLE / TB BLE） |
+| `WIFI_ISP` | Wi-Fi / ISP 模块 OTA（LY / TB WiFi 包） |
 
----
+### TB 方案
+
+TB 渠道使用 `GlassesManage.startOTA(...)`，支持 BLE 与 WiFi 两种升级：
+
+| `OtaType` | 说明 | `version` |
+|-----------|------|-----------|
+| `FIRMWARE` |  BLE OTA（`.bin` 等） | **必填四段式**，如 `1.0.0.5`（每段 0–255）；用于 OTA 握手校验 |
+| `WIFI_ISP` |  WiFi OTA | 无需传 `version` |
+
+```kotlin
+// BLE 固件
+GlassesManage.startOTA(
+    path = "/path/to/firmware_v1.0.0.5.bin",
+    type = GlassesConstant.OtaType.FIRMWARE,
+    version = "1.0.0.5",
+)
+
+// WiFi 固件
+GlassesManage.startOTA(
+    path = "/path/to/wifi_firmware.bin",
+    type = GlassesConstant.OtaType.WIFI_ISP,
+)
+```
+
+> Demo：`UpdateScreen` 会展示当前设备版本；BLE 升级时请确认「固件版本」为四段式目标版本（文件名解析出的三段式需手动补第四段）。
+
+### RTK 方案
+
+RTK 渠道请使用 `GlassesManage.startRtkOta(...)`；`GlassesManage.startOTA(...)` 在 RTK 下**无实际操作**，请勿调用。
+
+```kotlin
+GlassesManage.startRtkOta(
+    btPath = "/path/to/bt_firmware.bin",       // null 或空 = 跳过 BT 升级
+    btVersion = "1.0.0.1",                     // BT 固件版本号（四段式）
+    wifiZipPath = "/path/to/wifi_firmware.zip" // null 或空 = 跳过 WiFi 升级；压缩包内需含 ota.json
+)
+```
+
+| 参数 | 类型 | 说明 |
+|------|------|------|
+| `btPath` | `String?` | BT 固件文件绝对路径；`null` 或空字符串则跳过 BT |
+| `btVersion` | `String?` | BT 固件版本号（四段式，如 `1.0.0.1`）；与 `btPath` 配套 |
+| `wifiZipPath` | `String?` | WiFi 固件压缩包路径（内含 `ota.json` 及声明的 bin 文件）；`null` 或空则跳过 WiFi |
+
+BT 与 WiFi 至少传入一种；也可同时升级。仅升 BT 时 `wifiZipPath` 传 `null`；仅升 WiFi 时 `btPath` / `btVersion` 传 `null`。
+
+**升级流程**（一次 SoftAP 会话，非 BLE 与 WiFi 两段独立 OTA）：
+
+1. 连接眼镜 SoftAP
+2. 若含 BT：推送 BT bin（此阶段不汇报 `OTAEvent.Progress`）
+3. 若含 WiFi：SDK 解压压缩包，按 `ota.json` 依次推送各 WiFi 包（`OTAStage.VERIFY` 进度）
+4. DFU 统一激活（`OTAStage.OTA` 进度）
+5. 结果经 `GlassesManage.eventFlow()` 回调 `OTAEvent`（见 [第 10 节](#-ota-升级---otaevent)）
+
+**RTK OTA 错误码**：包校验 / DFU 流程见 [36xx](#-rtk-ota--dfu-错误3601---3608)；开启 SoftAP / 连热点见 [35xx](#-rtk-softap-共用错误3501---3505)（与直播、媒体同步共用）。默认文案：`RtkOtaErrors.defaultReason(code)`、`RtkSoftApErrors.defaultReason(code)`。
+
+Demo：`UpdateViewModel.startRtkOtaUpgrade()` 支持分别选择 BT bin 与 WiFi zip，或二者同时升级。
 
 ## **13. 错误码说明**
 
-### ⚠️ SDK 基础错误（1000 ~ 1001）
+错误码定义于 `GlassesConstant`；业务回调中通过 `event.code` 或 `Failed(reason, code)` 获取。
+
+> `ERROR_CODE_SYNC_BLE_NOT_CONNECTED`（1010）已废弃，请使用 `ERROR_CODE_BLE_NOT_CONNECTED`。
+
+### ⚠️ SDK 基础错误（1001 ~ 1010）
 | 错误码 | 名称 | 描述 |
 |:-------:|:------|:------|
 | 1001 | ERROR_CODE_SDK_NOT_INITIALIZED | SDK 未初始化 |
+| 1010 | ERROR_CODE_BLE_NOT_CONNECTED | BLE 未连接（OTA、媒体同步等需 BLE 已连接的操作通用） |
 
 ### 🖼️ 图片传输错误（2001 - 2011）
 | 错误码 | 名称 | 描述 |
@@ -1152,13 +1697,17 @@ GlassesManage.startOTA(
 | 2010 | ERROR_CODE_IMAGE_SAVE | 图片保存失败 |
 | 2011 | ERROR_CODE_IMAGE_RECOGNITION | 图片识别失败 |
 
-### 📶 Wi-Fi 连接错误（3001 - 3004）
+### 📶 Wi-Fi 连接错误（3001 - 3008）
 | 错误码 | 名称 | 描述 |
 |:-------:|:------|:------|
 | 3001 | ERROR_CODE_WIFI_CONNECT_TIMEOUT | 连接 Wi-Fi 超时 |
 | 3002 | ERROR_CODE_WIFI_DEVICE_DISCOVERY_TIMEOUT | 发现设备超时 |
 | 3003 | ERROR_CODE_WIFI_NEGOTIATION_TIMEOUT | 协商超时 |
 | 3004 | ERROR_CODE_WIFI_UNKNOWN_ERROR | 未知错误 |
+| 3005 | ERROR_CODE_WIFI_OPEN_ERROR | 开启 Wi-Fi AP 热点失败（**LY 方案**；RTK 见 3501） |
+| 3006 | ERROR_CODE_WIFI_NO_PERMISSION | 缺少 Wi-Fi 连接权限：未授予 `ACCESS_FINE_LOCATION`；Android 13（API 33）及以上还需 `NEARBY_WIFI_DEVICES` |
+| 3007 | ERROR_CODE_WIFI_NO_OPEN_LOCATION | 位置服务未开启 |
+| 3008 | ERROR_CODE_WIFI_CLOSED | Wi-Fi 已关闭 |
 
 ### 📂 文件下载错误（3101 - 3105）
 | 错误码 | 名称 | 描述 |
@@ -1169,5 +1718,79 @@ GlassesManage.startOTA(
 | 3104 | ERROR_CODE_DOWNLOAD_NETWORK_ERROR | 网络错误 |
 | 3105 | ERROR_CODE_DOWNLOAD_DELETE | 文件删除失败 |
 
-> OTA 错误码说明请参考：[**官方文档 OTA 错误码**](https://doc.zh-jieli.com/Apps/Android/ota/zh-cn/master/development/interface_desc.html#id7)
+### 📡 RTK SoftAP 共用错误（3501 - 3505）
+
+**RTK 渠道**在 OTA、直播、媒体同步中，「眼镜开启 SoftAP → 手机连接热点」阶段统一使用下列错误码（`FileSyncEvent.Failed` / `LiveEvent.Failed` / `OTAEvent.Failed` 的 `code` 字段）。
+
+默认文案与 Wi‑Fi 连 AP 失败分类：`com.fission.wear.glasses.sdk.rtk.RtkSoftApErrors`；直播侧别名：`LiveStreamErrors.CODE_HOTSPOT_*`、`CODE_WIFI_JOIN_*`（均指向本段）。
+
+| 错误码 | 名称 | 描述 |
+|:-------:|:------|:------|
+| 3501 | ERROR_CODE_RTK_AP_ENABLE_FAILED | 眼镜 SoftAP 开启失败 |
+| 3502 | ERROR_CODE_RTK_AP_INFO_UNAVAILABLE | 眼镜 AP 信息（SSID/密码）不可用 |
+| 3503 | ERROR_CODE_RTK_WIFI_JOIN_REJECTED | 用户在系统 Wi‑Fi 弹窗取消/拒绝连接眼镜热点 |
+| 3504 | ERROR_CODE_RTK_WIFI_JOIN_FAILED | 未能连上眼镜热点（非用户明确取消） |
+| 3505 | ERROR_CODE_RTK_WIFI_JOIN_TIMEOUT | 连接眼镜热点超时 |
+
+### 🔄 RTK OTA / DFU 错误（3601 - 3608）
+
+**RTK 渠道** `GlassesManage.startRtkOta(...)` / `OTAEvent.Failed` 专用（与 LY 的 40xx ISP OTA 独立编号）。默认文案：`RtkOtaErrors.defaultReason(code)`。
+
+| 错误码 | 名称 | 描述 |
+|:-------:|:------|:------|
+| 3601 | ERROR_CODE_RTK_OTA_PACKAGE_INVALID | 升级包、版本号或 `ota.json` 无效 |
+| 3602 | ERROR_CODE_RTK_OTA_BT_FILE_NOT_FOUND | BT 固件文件不存在 |
+| 3603 | ERROR_CODE_RTK_OTA_DEVICE_ADDRESS_EMPTY | 设备地址为空 |
+| 3604 | ERROR_CODE_RTK_OTA_DFU_CONNECT_FAILED | DFU 连接设备失败 |
+| 3605 | ERROR_CODE_RTK_OTA_DFU_PREPARE_FAILED | DFU 设备准备失败或超时 |
+| 3606 | ERROR_CODE_RTK_OTA_PUSH_FAILED | 固件推送到眼镜失败 |
+| 3607 | ERROR_CODE_RTK_OTA_ACTIVATE_FAILED | 固件激活（`startOtaProcedure`）失败 |
+| 3608 | ERROR_CODE_RTK_OTA_DFU_PROCEDURE_FAILED | DFU 升级过程失败（厂商细节见 `reason`） |
+
+### 🔄 LY OTA 升级错误（4001 - 4005）
+
+**LY 方案** ISP / 主固件 OTA；RTK 请使用上节 36xx。
+| 错误码 | 名称 | 描述 |
+|:-------:|:------|:------|
+| 4001 | ERROR_CODE_OTA_FILE_NOT_FOUND | OTA 固件文件不存在或路径为空 |
+| 4002 | ERROR_CODE_OTA_HANDSHAKE_FAILED | ISP TCP OTA 握手失败 |
+| 4003 | ERROR_CODE_OTA_TRANSFER_FAILED | ISP TCP OTA 传输失败 |
+| 4004 | ERROR_CODE_OTA_UPGRADE_FAILED | ISP 升级失败（设备返回 Upgrade_err） |
+| 4005 | ERROR_CODE_OTA_FILE_OR_VERSION_INVALID | OTA 资源或版本号无效（LY ISP OTA） |
+
+### 🤖 AI 助手错误（500001 - 500003）
+| 错误码 | 名称 | 描述 |
+|:-------:|:------|:------|
+| 500001 | AIErrorCode.DUPLICATE_CONNECTION | 重复连接 |
+| 500002 | AIErrorCode.DEVICE_NOT_AUTHORIZED | 设备未授权 |
+| 500003 | AIErrorCode.SERVER_KEY_ERROR | 服务器密钥错误 |
+
+### 📺 直播错误（3201 - 3214）
+
+通过 `LiveEvent.Failed` / `PreviewFailed` / `Disconnected` 的 `code` 字段回调。App 可按码定制 UI；SDK 默认说明见 `LiveStreamErrors.defaultReason(code)`。
+
+**RTK 开启 AP / 连热点**不在本表，见 [RTK SoftAP 共用（3501–3505）](#-rtk-softap-共用错误3501---3505)。
+
+| 错误码 | 名称 | 典型场景 |
+|:-------:|:------|:------|
+| 3201 | ERROR_CODE_LIVE_DEVICE_NOT_CONNECTED | 眼镜 BLE 未连接 |
+| 3202 | ERROR_CODE_LIVE_DEVICE_NOT_READY | 眼镜初始化未完成 |
+| 3207 | ERROR_CODE_LIVE_PREVIEW_START_FAILED | RTK 预览播放器启动失败 |
+| 3208 | ERROR_CODE_LIVE_GLASSES_START_FAILED | 眼镜侧 `startLiveStreaming` 返回失败 |
+| 3209 | ERROR_CODE_LIVE_INTERRUPTED | **推流进行中**会话异常中断 |
+| 3210 | ERROR_CODE_LIVE_PHONE_WIFI_OFF | 手机 Wi‑Fi 已关闭 |
+| 3211 | ERROR_CODE_LIVE_GLASSES_AP_LINK_LOST | 与眼镜热点连接断开 |
+| 3212 | ERROR_CODE_LIVE_GLASSES_AP_CLOSED | 眼镜热点已关闭 |
+| 3213 | ERROR_CODE_LIVE_GLASSES_DISCONNECTED | 眼镜 BLE 断开 |
+| 3214 | ERROR_CODE_LIVE_CELLULAR_UNAVAILABLE | 手机蜂窝数据开关未开启 |
+
+**阶段区分（重要）**：
+
+- **开播前置**（`startLiveStreaming` 入口）：`3201`、`3210`、`3214`
+- **连接/预览阶段**（未正式推流）：RTK 常见 `3501`–`3505`（AP 链路）、`3207`–`3208`
+- **推流进行中**：常见 `3209`、`3210`–`3213`；`3209` 不应再用于「用户取消连 Wi‑Fi」
+
+**相关 Wi‑Fi 码**：LY 媒体同步/OTA 见 [3001–3008](#-wi-fi-连接错误3001---3008)；RTK 连眼镜 AP 见 [3501–3505](#-rtk-softap-共用错误3501---3505)。
+
+> 杰理 OTA 升级过程中的错误码说明请参考：[**官方文档 OTA 错误码**](https://doc.zh-jieli.com/Apps/Android/ota/zh-cn/master/development/interface_desc.html#id7)
 

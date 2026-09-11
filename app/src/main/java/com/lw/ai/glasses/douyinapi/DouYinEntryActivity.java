@@ -19,6 +19,7 @@ import com.bytedance.sdk.open.aweme.common.model.BaseResp;
 import com.bytedance.sdk.open.aweme.share.Share;
 import com.bytedance.sdk.open.douyin.DouYinOpenApiFactory;
 import com.bytedance.sdk.open.douyin.api.DouYinOpenApi;
+import com.lw.ai.glasses.BuildConfig;
 import com.lw.ai.glasses.R;
 import com.lw.ai.glasses.ui.MainActivity;
 import java.io.IOException;
@@ -39,8 +40,9 @@ public class DouYinEntryActivity extends Activity implements IApiEventHandler {
 
     private static final String TAG = "DouYinEntryActivity";
     private static final String ACCESS_TOKEN_URL = "https://open.douyin.com/oauth/access_token/";
-    private static final String CLIENT_KEY = "aw21acpmg1c718rd";
-    private static final String CLIENT_SECRET = "a60a3610ccb78c916269b1969c1a0a32";
+    // 抖音开放平台申请的 CLIENT_KEY / CLIENT_SECRET，由 douyin.properties 注入 BuildConfig
+    private static final String CLIENT_KEY = BuildConfig.DOUYIN_CLIENT_KEY;
+    private static final String CLIENT_SECRET = BuildConfig.DOUYIN_CLIENT_SECRET;
     private static final OkHttpClient HTTP_CLIENT = new OkHttpClient();
 
     DouYinOpenApi douYinOpenApi;

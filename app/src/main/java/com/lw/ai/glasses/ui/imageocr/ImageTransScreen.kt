@@ -65,6 +65,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.fission.wear.glasses.sdk.GlassesManage
 import com.lw.ai.glasses.R
+import com.lw.ai.glasses.ui.common.WsConnectionTopNotification
 import com.lw.ai.glasses.utils.getFileSize
 import com.lw.ai.glasses.utils.getImageDimensions
 import com.lw.ai.glasses.utils.uriToFile
@@ -140,6 +141,7 @@ fun ImageTranslateScreen(
         showTranslatedImage = !showTranslatedImage
     }
 
+    Box(modifier = Modifier.fillMaxSize()) {
     Scaffold(
         topBar = {
             TopAppBar(
@@ -440,6 +442,12 @@ fun ImageTranslateScreen(
                 }
             }
         }
+    }
+        WsConnectionTopNotification(
+            state = uiState.wsConnection,
+            onReconnect = viewModel::reconnectWebSocket,
+            modifier = Modifier.align(Alignment.TopCenter),
+        )
     }
 }
 

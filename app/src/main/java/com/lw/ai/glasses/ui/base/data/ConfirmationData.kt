@@ -1,4 +1,4 @@
-package com.lw.ai.glasses.ui.base.data
+
 import android.annotation.SuppressLint
 import androidx.annotation.DrawableRes
 import androidx.compose.ui.text.AnnotatedString

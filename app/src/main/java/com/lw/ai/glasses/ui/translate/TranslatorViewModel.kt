@@ -1,12 +1,13 @@
 package com.lw.ai.glasses.ui.translate
 
-import com.lw.ai.glasses.ui.base.viewmodel.BaseViewModel
+import BaseViewModel
 import android.content.Context
 import androidx.lifecycle.viewModelScope
 import com.blankj.utilcode.util.LogUtils
 import com.fission.wear.glasses.sdk.GlassesManage
 import com.fission.wear.glasses.sdk.AiAssistantClient
 import com.fission.wear.glasses.sdk.constant.GlassesConstant
+import com.fission.wear.glasses.sdk.util.SimultaneousInterpretationAudioPolicy
 import com.fission.wear.glasses.sdk.events.AiTranslationEvent
 import com.lw.ai.glasses.state.WsConnectionStateManager
 import com.fission.wear.glasses.sdk.events.AudioStateEvent
@@ -285,7 +286,7 @@ class TranslatorViewModel @Inject constructor(
                         delay(100)
                     }
                     AiAssistantClient.getInstance().setTranslationAudioPlaybackEnabled(_uiState.value.translationAudioPlaybackEnabled)
-                    AiAssistantClient.getInstance().startReceivingAudio(modeStr, 140)
+                    AiAssistantClient.getInstance().startReceivingAudio(modeStr, uiState.value.srcLang?.langType!!)
                 }
                 TranslationMode.DIALOGUE -> {
                     val requestId = System.currentTimeMillis()
@@ -297,15 +298,30 @@ class TranslatorViewModel @Inject constructor(
                         audioFormat = GlassesConstant.AI_TRANSLATION_AUDIO_FORMAT_RAW_PCM,
                     )
                     delay(100)
-                    AiAssistantClient.getInstance().startReceivingAudio(modeStr, 140)
+                    AiAssistantClient.getInstance().startReceivingAudio(modeStr, uiState.value.srcLang?.langType!!)
                 }
             }
 
-            streamRecorder.start(fileName = fileName) { pcmData ->
+            val simultaneousPolicy =
+                if (_uiState.value.currentMode == TranslationMode.REAL_TIME) {
+                    AiAssistantClient.getInstance().resolveSimultaneousInterpretationAudioPolicy()
+                } else {
+                    null
+                }
+            streamRecorder.start(
+                fileName = fileName,
+                simultaneousPolicy = simultaneousPolicy,
+            ) { pcmData ->
                 AiAssistantClient.getInstance().sendReceivingAudioData(modeStr, pcmData)
                 val amplitude = calculateRMS(pcmData)
                 _uiState.update { it.copy(currentAmplitude = amplitude) }
                 pcmData
+            }
+            if (simultaneousPolicy == SimultaneousInterpretationAudioPolicy.SPEAKER_WITH_AEC) {
+                val sessionId = streamRecorder.getAudioSessionId()
+                if (sessionId != 0) {
+                    AiAssistantClient.getInstance().bindSimultaneousInterpretationCaptureSession(sessionId)
+                }
             }
         }
     }
@@ -352,9 +368,7 @@ class TranslatorViewModel @Inject constructor(
 
     private fun clearSimultaneousCaptureSessionIfNeeded() {
         if (_uiState.value.currentMode == TranslationMode.REAL_TIME) {
-            runCatching {
-                AiAssistantClient.getInstance().clearSimultaneousInterpretationCaptureSession()
-            }
+            AiAssistantClient.getInstance().clearSimultaneousInterpretationCaptureSession()
         }
     }
 

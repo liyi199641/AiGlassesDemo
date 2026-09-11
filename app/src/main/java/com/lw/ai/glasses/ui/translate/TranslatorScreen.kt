@@ -65,7 +65,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.lw.ai.glasses.R
-import com.lw.ai.glasses.ui.common.WsConnectionStatusBar
+import com.lw.ai.glasses.ui.common.WsConnectionTopNotification
 import com.lw.top.lib_core.data.local.entity.TranslationMessageEntity
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -143,98 +143,97 @@ fun TranslatorScreen(
         )
     }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text(stringResource(R.string.ai_translate_title)) },
-                navigationIcon = {
-                    IconButton(onClick = onNavigateBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back))
-                    }
-                },
-                actions = {
-                    IconButton(onClick = { showClearDialog = true }) {
-                        Icon(Icons.Default.Delete, contentDescription = stringResource(R.string.clear))
-                    }
-                }
-            )
-        },
-        bottomBar = {
-            Column(modifier = Modifier.navigationBarsPadding()) {
-                RecordControlPanel(
-                    isRecording = uiState.isRecording,
-                    isRealTimeSessionActive = uiState.isRealTimeSessionActive,
-                    currentMode = uiState.currentMode,
-                    currentAmplitude = uiState.currentAmplitude,
-                    translationAudioPlaybackEnabled = uiState.translationAudioPlaybackEnabled,
-                    onStartRecording = { viewModel.startRecording() },
-                    onStopRecording = { viewModel.stopRecording() },
-                    onToggleRealTimeRecording = { viewModel.toggleRealTimeRecording() },
-                    onEndRealTimeRecording = { viewModel.endRealTimeRecording() },
-                    onToggleTranslationAudioPlayback = { viewModel.toggleTranslationAudioPlayback() },
-                )
-            }
-        }
-    ) { paddingValues ->
-        Column(
-            modifier = Modifier
-                .padding(paddingValues)
-                .fillMaxSize()
-        ) {
-            WsConnectionStatusBar(
-                state = uiState.wsConnection,
-                onReconnect = viewModel::reconnectWebSocket,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
-            )
-            LanguageTopBar(
-                srcLang = uiState.srcLang,
-                targetLang = uiState.targetLang,
-                onSrcClick = {
-                    isSelectingSource = true
-                    showLanguageSheet = true
-                },
-                onTargetClick = {
-                    isSelectingSource = false
-                    showLanguageSheet = true
-                },
-                onSwapClick = { viewModel.swapLanguages() }
-            )
-
-            // 模式选择器
-            ModeSelector(
-                currentMode = uiState.currentMode,
-                onModeSelected = { viewModel.setTranslationMode(it) }
-            )
-
-            LazyColumn(
-                state = listState, // 3. 绑定 state
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxWidth(),
-                contentPadding = PaddingValues(16.dp)
-            ) {
-                items(
-                    items = allMessages,
-                    key = {
-                        if (uiState.currentMode == TranslationMode.REAL_TIME) {
-                            it.requestId
-                        } else {
-                            it.requestId + it.messageId
+    Box(modifier = Modifier.fillMaxSize()) {
+        Scaffold(
+            topBar = {
+                TopAppBar(
+                    title = { Text(stringResource(R.string.ai_translate_title)) },
+                    navigationIcon = {
+                        IconButton(onClick = onNavigateBack) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back))
+                        }
+                    },
+                    actions = {
+                        IconButton(onClick = { showClearDialog = true }) {
+                            Icon(Icons.Default.Delete, contentDescription = stringResource(R.string.clear))
                         }
                     }
-                ) { message ->
-                    TranslationItemCard(
-                        item = message,
+                )
+            },
+            bottomBar = {
+                Column(modifier = Modifier.navigationBarsPadding()) {
+                    RecordControlPanel(
+                        isRecording = uiState.isRecording,
+                        isRealTimeSessionActive = uiState.isRealTimeSessionActive,
                         currentMode = uiState.currentMode,
-                        onPlayAudio = { audioPath ->
-                            viewModel.playAudio(audioPath)
-                        },
+                        currentAmplitude = uiState.currentAmplitude,
+                        translationAudioPlaybackEnabled = uiState.translationAudioPlaybackEnabled,
+                        onStartRecording = { viewModel.startRecording() },
+                        onStopRecording = { viewModel.stopRecording() },
+                        onToggleRealTimeRecording = { viewModel.toggleRealTimeRecording() },
+                        onEndRealTimeRecording = { viewModel.endRealTimeRecording() },
+                        onToggleTranslationAudioPlayback = { viewModel.toggleTranslationAudioPlayback() },
                     )
+                }
+            },
+        ) { paddingValues ->
+            Column(
+                modifier = Modifier
+                    .padding(paddingValues)
+                    .fillMaxSize(),
+            ) {
+                LanguageTopBar(
+                    srcLang = uiState.srcLang,
+                    targetLang = uiState.targetLang,
+                    onSrcClick = {
+                        isSelectingSource = true
+                        showLanguageSheet = true
+                    },
+                    onTargetClick = {
+                        isSelectingSource = false
+                        showLanguageSheet = true
+                    },
+                    onSwapClick = { viewModel.swapLanguages() },
+                )
+
+                ModeSelector(
+                    currentMode = uiState.currentMode,
+                    onModeSelected = { viewModel.setTranslationMode(it) },
+                )
+
+                LazyColumn(
+                    state = listState,
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth(),
+                    contentPadding = PaddingValues(16.dp),
+                ) {
+                    items(
+                        items = allMessages,
+                        key = {
+                            if (uiState.currentMode == TranslationMode.REAL_TIME) {
+                                it.requestId
+                            } else {
+                                it.requestId + it.messageId
+                            }
+                        },
+                    ) { message ->
+                        TranslationItemCard(
+                            item = message,
+                            currentMode = uiState.currentMode,
+                            onPlayAudio = { audioPath ->
+                                viewModel.playAudio(audioPath)
+                            },
+                        )
+                    }
                 }
             }
         }
+        WsConnectionTopNotification(
+            state = uiState.wsConnection,
+            onReconnect = viewModel::reconnectWebSocket,
+            modifier = Modifier.align(Alignment.TopCenter),
+        )
     }
 }
 

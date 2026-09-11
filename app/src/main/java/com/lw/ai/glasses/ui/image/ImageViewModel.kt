@@ -1,39 +1,30 @@
 package com.lw.ai.glasses.ui.image
 
-import com.lw.ai.glasses.ui.base.viewmodel.BaseViewModel
-import android.content.Context
+import BaseViewModel
 import androidx.lifecycle.viewModelScope
-import com.blankj.utilcode.util.ToastUtils
-import com.fission.wear.glasses.sdk.GlassesManage
-import com.fission.wear.glasses.sdk.constant.GlassesConstant
-import com.fission.wear.glasses.sdk.events.FileSyncEvent
-import com.lw.ai.glasses.R
-import com.lw.top.lib_core.data.local.entity.MediaFilesEntity
+import com.lw.ai.glasses.state.MediaSyncStateManager
 import com.lw.top.lib_core.data.repository.PhotoRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
-import dagger.hilt.android.qualifiers.ApplicationContext
 import jakarta.inject.Inject
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
-import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 @HiltViewModel
 class ImageViewModel @Inject constructor(
-    @ApplicationContext private val context: Context,
-    private val photoRepository: PhotoRepository
+    private val photoRepository: PhotoRepository,
+    private val mediaSyncStateManager: MediaSyncStateManager,
 ) : BaseViewModel() {
 
-    private val _syncState = MutableStateFlow(SyncState())
     private val _uiEvents = MutableStateFlow<ImageUiEvent>(ImageUiEvent.None)
 
     val uiState: StateFlow<ImageUiState> = combine(
         photoRepository.getSyncedPhotosFlow(),
-        _syncState,
-        _uiEvents
+        mediaSyncStateManager.state,
+        _uiEvents,
     ) { photos, syncState, event ->
         val currentSelected = uiState.value.selectedImageForZoom
         val newSelectedImage = when (event) {
@@ -45,17 +36,13 @@ class ImageViewModel @Inject constructor(
         ImageUiState(
             images = photos,
             syncState = syncState,
-            selectedImageForZoom = newSelectedImage
+            selectedImageForZoom = newSelectedImage,
         )
     }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5000L),
-        initialValue = ImageUiState()
+        initialValue = ImageUiState(),
     )
-
-    init {
-        observeGlassesEvents()
-    }
 
     fun onEvent(event: ImageUiEvent) {
         _uiEvents.value = event
@@ -64,68 +51,17 @@ class ImageViewModel @Inject constructor(
         }
     }
 
-
-    fun clearAllPhotos() {//App 清理的时候。根据文件地址路径。清除下缓存
+    fun clearAllPhotos() {
         viewModelScope.launch {
             photoRepository.clearAllPhotos()
         }
     }
 
+    fun refreshPendingMediaCount() {
+        mediaSyncStateManager.refreshPendingMediaCount()
+    }
+
     fun syncAllMediaFile() {
-        if (_syncState.value.isSyncing) {
-            ToastUtils.showLong(context.getString(R.string.file_syncing))
-            return
-        }
-        _syncState.value = SyncState(isSyncing = true)
-        GlassesManage.syncAllMediaFile(GlassesConstant.WifiMode.P2P_MODE)
+        mediaSyncStateManager.syncAllMediaFile()
     }
-
-    fun observeGlassesEvents() {
-        viewModelScope.launch {
-            GlassesManage.eventFlow().collect { events ->
-                when (events) {
-
-                    is FileSyncEvent.ConnectSuccess -> {
-
-                    }
-
-                    is FileSyncEvent.DownloadProgress -> {
-                        _syncState.update {
-                            it.copy(
-                                syncProgress = events.progress / 100f,
-                                currentFileIndex = events.curFileIndex,
-                                totalFilesToSync = events.totalFileCount,
-                                speed = events.speed,
-                            )
-                        }
-                    }
-
-                    is FileSyncEvent.DownloadSuccess -> {
-                        if(events.filePath.isNotEmpty()){
-                            val newFileEntity = MediaFilesEntity(
-                                filePath = events.filePath,
-                                type = "IMAGE",
-                                createdAt = System.currentTimeMillis(),
-                                size = events.fileSizeInBytes,
-                            )
-                            photoRepository.insertPhoto(newFileEntity)
-                            val isLastFile = (events.curFileIndex + 1) == events.totalFileCount
-                            if (isLastFile) {
-                                _syncState.value = SyncState()
-                            }
-                        }
-                    }
-
-                    is FileSyncEvent.Failed -> {
-                        _syncState.value = SyncState()
-                    }
-
-                    else -> {
-
-                    }
-                }
-            }
-        }
-    }
-
 }

@@ -2,28 +2,40 @@ package com.lw.ai.glasses.ui.assistant
 
 import android.content.Intent
 import android.provider.CalendarContract
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.VolumeOff
 import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -36,6 +48,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -45,7 +58,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.layout.layoutId
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -54,8 +71,11 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
 import com.fission.wear.glasses.sdk.data.model.McpScheduleData
 import com.lw.ai.glasses.R
-import com.lw.ai.glasses.ui.common.WsConnectionStatusBar
+import com.lw.ai.glasses.state.StreamState
+import com.lw.ai.glasses.ui.common.WsConnectionTopNotification
 import com.lw.ai.glasses.ui.theme.components.TypewriterText
+import com.lw.ai.glasses.ui.translate.Language
+import com.lw.ai.glasses.ui.translate.LanguageSelectionSheet
 import com.lw.top.lib_core.data.local.entity.AiAssistantEntity
 import kotlinx.coroutines.flow.collectLatest
 
@@ -70,10 +90,21 @@ fun AiAssistantScreen(
     val context = LocalContext.current
     val dialogContent by viewModel.pendingCalendarEvent.collectAsStateWithLifecycle(null)
     val showConfirmDialog by viewModel.showConfirmDialog.collectAsStateWithLifecycle()
+    var showLanguageSheet by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         viewModel.navigateToCalendar.collectLatest { event ->
             launchCalendarIntent(context, event)
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        viewModel.onScreenVisible()
+    }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            viewModel.onScreenHidden()
         }
     }
 
@@ -95,73 +126,167 @@ fun AiAssistantScreen(
         )
     }
 
+    if (showLanguageSheet) {
+        LanguageSelectionSheet(
+            languages = uiState.allLanguages,
+            onDismissRequest = { showLanguageSheet = false },
+            onLanguageSelected = { language ->
+                viewModel.setDialogueLanguage(language)
+            },
+        )
+    }
 
-
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text(stringResource(R.string.ai_assistant_title)) },
-                navigationIcon = {
-                    IconButton(onClick = onNavigateBack) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = stringResource(R.string.back)
-                        )
+    Box(modifier = Modifier.fillMaxSize()) {
+        Scaffold(
+            topBar = {
+                TopAppBar(
+                    title = { Text(stringResource(R.string.ai_assistant_title)) },
+                    navigationIcon = {
+                        IconButton(onClick = onNavigateBack) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = stringResource(R.string.back)
+                            )
+                        }
+                    },
+                    actions = {
+                        TextButton(onClick = {
+                            viewModel.clearAllMessages()
+                        }) {
+                            Text(stringResource(R.string.clear_records))
+                        }
                     }
-                },
-                actions = {
-                    TextButton(onClick = {
-                        viewModel.clearAllMessages()
-                    }) {
-                        Text(stringResource(R.string.clear_records))
-                    }
+                )
+            },
+            bottomBar = {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(MaterialTheme.colorScheme.surface)
+                        .navigationBarsPadding(),
+                ) {
+                    AiDeviceControlBar(
+                        isAiDialogueInProgress = uiState.isAiDialogueInProgress,
+                        onStartAi = viewModel::startAiAssistant,
+                        onStopAi = viewModel::stopAiAssistant,
+                        onInterruptAi = viewModel::interruptAiAssistant,
+                    )
+                    AssistantBottomBar(
+                        selectedLanguage = uiState.selectedLanguage,
+                        agentAudioPlaybackEnabled = uiState.agentAudioPlaybackEnabled,
+                        onLanguageClick = { showLanguageSheet = true },
+                        onToggleAudio = { viewModel.toggleAgentAudioPlayback() },
+                    )
                 }
-            )
-        },
-        bottomBar = {
-            AgentAudioPlaybackToggle(
-                agentAudioPlaybackEnabled = uiState.agentAudioPlaybackEnabled,
-                onToggle = { viewModel.toggleAgentAudioPlayback() },
-            )
-        },
-    ) { innerPadding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding),
-        ) {
-            WsConnectionStatusBar(
-                state = uiState.wsConnection,
-                onReconnect = viewModel::reconnectWebSocket,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
-            )
+            },
+        ) { innerPadding ->
             ConversationList(
                 messages = uiState.messages,
                 streamingMessageId = uiState.streamingMessageId,
-                modifier = Modifier.fillMaxSize(),
+                typewriterRevision = uiState.typewriterRevision,
+                playingAnswerAudioPath = uiState.playingAnswerAudioPath,
+                isAiDialogueInProgress = uiState.isAiDialogueInProgress,
+                onPlayAnswerAudio = viewModel::playAnswerAudio,
+                getTypewriterProgress = viewModel::getTypewriterProgress,
+                onTypewriterProgressUpdate = viewModel::updateTypewriterProgress,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding),
             )
+        }
+        WsConnectionTopNotification(
+            state = uiState.wsConnection,
+            onReconnect = viewModel::reconnectWebSocket,
+            modifier = Modifier.align(Alignment.TopCenter),
+        )
+    }
+}
+
+@Composable
+private fun AiDeviceControlBar(
+    isAiDialogueInProgress: Boolean,
+    onStartAi: () -> Unit,
+    onStopAi: () -> Unit,
+    onInterruptAi: () -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text(
+            text = stringResource(R.string.ai_assistant_device_control),
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        if (isAiDialogueInProgress) {
+            Text(
+                text = stringResource(R.string.ai_assistant_dialogue_in_progress),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.primary,
+            )
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Button(
+                onClick = onStartAi,
+                modifier = Modifier.weight(1f),
+            ) {
+                Text(stringResource(R.string.start_ai))
+            }
+            OutlinedButton(
+                onClick = onStopAi,
+                modifier = Modifier.weight(1f),
+            ) {
+                Text(stringResource(R.string.stop_ai))
+            }
+        }
+        Button(
+            onClick = onInterruptAi,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text(stringResource(R.string.interrupt_ai_chat))
         }
     }
 }
 
 @Composable
-private fun AgentAudioPlaybackToggle(
+private fun AssistantBottomBar(
+    selectedLanguage: Language?,
     agentAudioPlaybackEnabled: Boolean,
-    onToggle: () -> Unit,
+    onLanguageClick: () -> Unit,
+    onToggleAudio: () -> Unit,
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(MaterialTheme.colorScheme.surface)
-            .navigationBarsPadding()
             .padding(horizontal = 16.dp, vertical = 12.dp),
-        horizontalArrangement = Arrangement.Center,
+        horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
         FilterChip(
+            selected = true,
+            onClick = onLanguageClick,
+            label = {
+                Text(
+                    text = selectedLanguage?.name
+                        ?: stringResource(R.string.choose_language),
+                )
+            },
+            leadingIcon = {
+                Icon(
+                    imageVector = Icons.Default.Language,
+                    contentDescription = stringResource(R.string.ai_dialogue_language),
+                    modifier = Modifier.size(18.dp),
+                )
+            },
+        )
+        FilterChip(
             selected = agentAudioPlaybackEnabled,
-            onClick = onToggle,
+            onClick = onToggleAudio,
             label = {
                 Text(
                     text = if (agentAudioPlaybackEnabled) {
@@ -190,13 +315,20 @@ private fun AgentAudioPlaybackToggle(
 private fun ConversationList(
     messages: List<AiAssistantEntity>,
     streamingMessageId: Long?,
+    typewriterRevision: Int,
+    playingAnswerAudioPath: String?,
+    isAiDialogueInProgress: Boolean,
+    onPlayAnswerAudio: (String) -> Unit,
+    getTypewriterProgress: (Long) -> StreamState,
+    onTypewriterProgressUpdate: (Long, Int?, Int?) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val listState = rememberLazyListState()
+    val topMessageTimestamp = messages.firstOrNull()?.timestamp
 
-    LaunchedEffect(messages) {
-        if (messages.isNotEmpty()) {
-            listState.animateScrollToItem(0)
+    LaunchedEffect(topMessageTimestamp) {
+        if (topMessageTimestamp != null) {
+            listState.scrollToItem(0)
         }
     }
 
@@ -216,11 +348,22 @@ private fun ConversationList(
         ) {
             itemsIndexed(
                 items = messages,
-                key = { _, message -> message.timestamp }) { index, message ->
-//                val enableAnimation = message.id == streamingMessageId
+                key = { _, message -> message.timestamp }) { _, message ->
+                val isStreamingMessage = streamingMessageId != null &&
+                    message.timestamp == streamingMessageId
+                val typewriterProgress = remember(message.timestamp, typewriterRevision) {
+                    getTypewriterProgress(message.timestamp)
+                }
                 MessageBubble(
                     message = message,
-                    isLatestMessage = true,
+                    enableTypewriter = isStreamingMessage,
+                    typewriterProgress = typewriterProgress,
+                    onTypewriterProgressUpdate = { questionLength, answerLength ->
+                        onTypewriterProgressUpdate(message.timestamp, questionLength, answerLength)
+                    },
+                    isAnswerAudioPlaying = playingAnswerAudioPath == message.answerAudioPath,
+                    isAnswerAudioPlayable = !isAiDialogueInProgress,
+                    onPlayAnswerAudio = onPlayAnswerAudio,
                 )
             }
         }
@@ -231,13 +374,13 @@ private fun ConversationList(
 @Composable
 private fun MessageBubble(
     message: AiAssistantEntity,
-    isLatestMessage: Boolean
+    enableTypewriter: Boolean,
+    typewriterProgress: StreamState,
+    onTypewriterProgressUpdate: (questionLength: Int?, answerLength: Int?) -> Unit,
+    isAnswerAudioPlaying: Boolean,
+    isAnswerAudioPlayable: Boolean,
+    onPlayAnswerAudio: (String) -> Unit,
 ) {
-
-    var displayedQuestionLength by remember(message.id) { mutableStateOf(0) }
-    var displayedAnswerLength by remember(message.id) { mutableStateOf(0) }
-
-
     Column(modifier = Modifier.fillMaxWidth()) {
         if (message.question.isNotEmpty()) {
             Row(
@@ -248,33 +391,263 @@ private fun MessageBubble(
                     content = message.question,
                     type = message.questionType,
                     isQuestion = true,
-                    enableAnimation = isLatestMessage,
-                    displayedLength = displayedQuestionLength,
-                    onAnimationEnd = { displayedQuestionLength = it }
+                    enableAnimation = false,
+                    displayedLength = typewriterProgress.displayedQuestionLength,
+                    onAnimationEnd = {
+                        onTypewriterProgressUpdate(it, null)
+                    }
                 )
             }
         }
 
-        // ... 答案部分 ...
-        if (message.answer.isNotEmpty()) {
+        val answerAudioPath = message.answerAudioPath?.takeIf { it.isNotBlank() }
+        if (message.answer.isNotEmpty() || answerAudioPath != null) {
             if (message.question.isNotEmpty()) {
                 Spacer(modifier = Modifier.height(8.dp))
             }
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.Start
-            ) {
-                MessageContent(
-                    content = message.answer,
-                    type = message.answerType,
-                    isQuestion = false,
-                    enableAnimation = isLatestMessage,
-                    displayedLength = displayedAnswerLength,
-                    onAnimationEnd = { displayedAnswerLength = it }
-                )
+            if (message.answerType == "image" && message.answer.isNotEmpty()) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.Start,
+                ) {
+                    MessageContent(
+                        content = message.answer,
+                        type = message.answerType,
+                        isQuestion = false,
+                        enableAnimation = enableTypewriter,
+                        displayedLength = typewriterProgress.displayedAnswerLength,
+                        onAnimationEnd = {
+                            onTypewriterProgressUpdate(null, it)
+                        },
+                    )
+                }
+            } else {
+                Box(
+                    modifier = Modifier.fillMaxWidth(),
+                    contentAlignment = Alignment.CenterStart,
+                ) {
+                    AnswerMessageCard(
+                        answer = message.answer,
+                        answerAudioPath = answerAudioPath,
+                        isAnswerAudioPlaying = isAnswerAudioPlaying,
+                        isAnswerAudioPlayable = isAnswerAudioPlayable,
+                        enableAnimation = enableTypewriter && message.answer.isNotEmpty(),
+                        displayedLength = typewriterProgress.displayedAnswerLength,
+                        onAnimationEnd = {
+                            onTypewriterProgressUpdate(null, it)
+                        },
+                        onPlayAnswerAudio = onPlayAnswerAudio,
+                    )
+                }
             }
         }
     }
+}
+
+@Composable
+private fun AnswerMessageCard(
+    answer: String,
+    answerAudioPath: String?,
+    isAnswerAudioPlaying: Boolean,
+    isAnswerAudioPlayable: Boolean,
+    enableAnimation: Boolean,
+    displayedLength: Int,
+    onAnimationEnd: (Int) -> Unit,
+    onPlayAnswerAudio: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val backgroundColor = MaterialTheme.colorScheme.secondaryContainer
+    val accentColor = if (isAnswerAudioPlayable) {
+        MaterialTheme.colorScheme.primary
+    } else {
+        MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.38f)
+    }
+
+    Card(
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = backgroundColor),
+        modifier = modifier.wrapContentWidth(),
+    ) {
+        val dividerColor = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.12f)
+        val hasText = answer.isNotEmpty()
+        val hasAudio = answerAudioPath != null
+
+        MaxChildWidthColumn(
+            modifier = Modifier,
+            showDivider = hasText && hasAudio,
+            divider = {
+                Box(
+                    modifier = Modifier
+                        .padding(horizontal = 12.dp)
+                        .fillMaxWidth()
+                        .height(1.dp)
+                        .background(dividerColor),
+                )
+            },
+            text = {
+                if (enableAnimation && answer.isNotEmpty()) {
+                    TypewriterText(
+                        textToAnimate = answer,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+                        previousLength = displayedLength,
+                        onAnimationEnd = onAnimationEnd,
+                    )
+                } else if (hasText) {
+                    Text(
+                        text = answer,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+                    )
+                }
+            },
+            audio = {
+                Row(
+                    modifier = Modifier
+                        .wrapContentWidth()
+                        .then(
+                            if (isAnswerAudioPlayable) {
+                                Modifier.clickable { onPlayAnswerAudio(answerAudioPath!!) }
+                            } else {
+                                Modifier
+                            },
+                        )
+                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.VolumeUp,
+                        contentDescription = stringResource(R.string.play_audio),
+                        tint = accentColor,
+                        modifier = Modifier.size(18.dp),
+                    )
+                    AnswerAudioWaveBars(
+                        tint = accentColor,
+                        isPlaying = isAnswerAudioPlaying,
+                    )
+                }
+            },
+            hasText = hasText,
+            hasAudio = hasAudio,
+        )
+    }
+}
+
+/**
+ * 纵向排列文本与音频，宽度取两者中较宽的一个（而非仅随音频或撑满屏幕）。
+ */
+@Composable
+private fun MaxChildWidthColumn(
+    modifier: Modifier = Modifier,
+    showDivider: Boolean,
+    hasText: Boolean,
+    hasAudio: Boolean,
+    divider: @Composable () -> Unit,
+    text: @Composable () -> Unit,
+    audio: @Composable () -> Unit,
+) {
+    Layout(
+        modifier = modifier.wrapContentWidth(Alignment.Start),
+        content = {
+            Box(Modifier.layoutId("text")) {
+                if (hasText) text()
+            }
+            Box(Modifier.layoutId("divider")) {
+                if (showDivider) divider()
+            }
+            Box(Modifier.layoutId("audio")) {
+                if (hasAudio) audio()
+            }
+        },
+    ) { measurables, constraints ->
+        val loose = constraints.copy(minWidth = 0)
+        val textPlaceable = measurables.first { it.layoutId == "text" }.measure(loose)
+        val audioPlaceable = measurables.first { it.layoutId == "audio" }.measure(loose)
+        val contentWidth = maxOf(textPlaceable.width, audioPlaceable.width)
+            .coerceIn(0, constraints.maxWidth)
+
+        val dividerPlaceable = if (showDivider) {
+            measurables.first { it.layoutId == "divider" }
+                .measure(Constraints.fixedWidth(contentWidth))
+        } else {
+            null
+        }
+
+        val totalHeight = textPlaceable.height +
+            (dividerPlaceable?.height ?: 0) +
+            audioPlaceable.height
+
+        layout(contentWidth, totalHeight) {
+            var y = 0
+            textPlaceable.placeRelative(0, y)
+            y += textPlaceable.height
+            dividerPlaceable?.placeRelative(0, y)
+            y += dividerPlaceable?.height ?: 0
+            audioPlaceable.placeRelative(0, y)
+        }
+    }
+}
+
+private val AnswerAudioWaveStaticFractions = listOf(0.45f, 0.7f, 0.55f, 0.65f)
+
+@Composable
+private fun AnswerAudioWaveBars(
+    tint: Color,
+    isPlaying: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    val transition = rememberInfiniteTransition(label = "answer_audio_wave")
+    val bar1 by transition.animateFloat(
+        initialValue = 0.35f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(tween(420), RepeatMode.Reverse),
+        label = "bar1",
+    )
+    val bar2 by transition.animateFloat(
+        initialValue = 0.55f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(tween(520), RepeatMode.Reverse),
+        label = "bar2",
+    )
+    val bar3 by transition.animateFloat(
+        initialValue = 0.4f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(tween(380), RepeatMode.Reverse),
+        label = "bar3",
+    )
+    val bar4 by transition.animateFloat(
+        initialValue = 0.45f,
+        targetValue = 0.9f,
+        animationSpec = infiniteRepeatable(tween(460), RepeatMode.Reverse),
+        label = "bar4",
+    )
+    val barFractions = if (isPlaying) {
+        listOf(bar1, bar2, bar3, bar4)
+    } else {
+        AnswerAudioWaveStaticFractions
+    }
+
+    Row(
+        modifier = modifier
+            .height(16.dp)
+            .width(21.dp),
+        horizontalArrangement = Arrangement.spacedBy(3.dp, Alignment.Start),
+        verticalAlignment = Alignment.Bottom,
+    ) {
+        barFractions.forEach { fraction ->
+            AnswerAudioWaveBar(fraction = fraction, tint = tint)
+        }
+    }
+}
+
+@Composable
+private fun AnswerAudioWaveBar(fraction: Float, tint: Color) {
+    Box(
+        modifier = Modifier
+            .width(3.dp)
+            .fillMaxHeight(fraction.coerceIn(0.25f, 1f))
+            .clip(RoundedCornerShape(2.dp))
+            .background(tint.copy(alpha = 0.85f)),
+    )
 }
 
 @Composable

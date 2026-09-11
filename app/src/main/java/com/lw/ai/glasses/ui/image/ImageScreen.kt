@@ -2,6 +2,8 @@
 
 package com.lw.ai.glasses.ui.image
 
+import TextRed
+import TextRedBackground
 import android.net.Uri
 import android.view.ViewGroup
 import android.widget.FrameLayout
@@ -21,19 +23,24 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.PauseCircleOutline
 import androidx.compose.material.icons.filled.PlayCircleOutline
+import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -68,8 +75,11 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import coil3.compose.AsyncImage
 import com.lw.ai.glasses.R
+import com.lw.ai.glasses.state.MediaSyncPreviewItem
 import com.lw.top.lib_core.data.local.entity.MediaFilesEntity
 import java.io.File
+import java.text.DateFormat
+import java.util.Date
 import kotlin.math.log10
 import kotlin.math.pow
 
@@ -80,6 +90,11 @@ fun ImageScreen(
     onNavigateBack: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsState()
+
+    LaunchedEffect(Unit) {
+        viewModel.refreshPendingMediaCount()
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -114,12 +129,24 @@ fun ImageScreen(
                 totalFiles = uiState.syncState.totalFilesToSync,
                 isSyncing = uiState.syncState.isSyncing,
                 speed = uiState.syncState.speed,
-                onSyncClick = { viewModel.syncAllMediaFile() }
+                pendingDeviceMediaCount = uiState.syncState.pendingDeviceMediaCount,
+                onSyncClick = { viewModel.syncAllMediaFile() },
             )
+
+            uiState.syncState.errorMessage?.takeIf { !uiState.syncState.isSyncing }?.let { message ->
+                Spacer(modifier = Modifier.height(8.dp))
+                SyncErrorBubble(message = message)
+            }
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            if (uiState.images.isEmpty() && !uiState.syncState.isSyncing) {
+            val previewItems = uiState.syncState.previewItems
+            val hasPreviewItems = previewItems.isNotEmpty()
+            val showEmptyHint = uiState.images.isEmpty() &&
+                !hasPreviewItems &&
+                !uiState.syncState.isSyncing
+
+            if (showEmptyHint) {
                 Box(
                     modifier = Modifier.fillMaxSize(),
                     contentAlignment = Alignment.Center
@@ -127,55 +154,56 @@ fun ImageScreen(
                     Text(stringResource(R.string.empty_images_hint))
                 }
             } else {
+                val previewLocalPaths = remember(previewItems) {
+                    previewItems.mapNotNull { it.filePath }.toSet()
+                }
+                val groupedMedia = remember(uiState.images, previewLocalPaths) {
+                    uiState.images
+                        .filter { it.filePath !in previewLocalPaths }
+                        .groupBy { MediaFileUtils.startOfDay(it.createdAt) }
+                        .entries
+                        .sortedByDescending { it.key }
+                }
+
                 LazyVerticalGrid(
                     columns = GridCells.Fixed(2),
                     verticalArrangement = Arrangement.spacedBy(12.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    contentPadding = PaddingValues(bottom = 16.dp),
                 ) {
-                    items(items = uiState.images, key = { it.id }) { mediaFile ->
-                        val videoExtensions = setOf("mp4", "mov", "avi", "mkv", "webm")
-                        val isVideo = videoExtensions.contains(File(mediaFile.filePath).extension.lowercase())
+                    if (hasPreviewItems) {
+                        item(key = "sync-preview-header", span = { GridItemSpan(2) }) {
+                            Text(
+                                text = stringResource(R.string.sync_in_progress_section),
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(top = 8.dp, bottom = 4.dp),
+                            )
+                        }
+                        items(items = previewItems, key = { it.fpath }) { previewItem ->
+                            SyncPreviewGridItem(
+                                item = previewItem,
+                                isActiveDownload = uiState.syncState.isSyncing &&
+                                    !previewItem.isDownloaded &&
+                                    uiState.syncState.currentFileIndex == previewItem.index + 1,
+                                onOpenDownloaded = { mediaFile ->
+                                    viewModel.onEvent(ImageUiEvent.SelectImage(mediaFile))
+                                },
+                            )
+                        }
+                    }
 
-                        Card(
-                            modifier = Modifier.aspectRatio(1f),
-                            shape = RoundedCornerShape(8.dp),
-                            onClick = { viewModel.onEvent(ImageUiEvent.SelectImage(mediaFile)) }
-                        ) {
-                            Box(modifier = Modifier.fillMaxSize()) {
-                                AsyncImage(
-                                    model = mediaFile.filePath,
-                                    contentDescription = mediaFile.type,
-                                    modifier = Modifier.fillMaxSize(),
-                                    contentScale = ContentScale.Crop
-                                )
-
-                                if (isVideo) {
-                                    Icon(
-                                        imageVector = Icons.Default.PlayCircleOutline,
-                                        contentDescription = stringResource(R.string.play_video),
-                                        tint = Color.White.copy(alpha = 0.8f), // 使用带透明度的白色
-                                        modifier = Modifier
-                                            .align(Alignment.Center)
-                                            .size(48.dp) // 给图标一个合适的大小
-                                    )
-                                }
-
-                                Text(
-                                    text = formatFileSize(mediaFile.size), // 使用辅助函数格式化大小
-                                    color = Color.White,
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Medium,
-                                    textAlign = TextAlign.End,
-                                    modifier = Modifier
-                                        .align(Alignment.BottomEnd)
-                                        .padding(8.dp)
-                                        .background(
-                                            Color.Black.copy(alpha = 0.3f), // 加个半透明背景，确保文字清晰
-                                            RoundedCornerShape(4.dp)
-                                        )
-                                        .padding(horizontal = 4.dp, vertical = 2.dp)
-                                )
-                            }
+                    groupedMedia.forEach { (dayStart, dayItems) ->
+                        item(key = "header-$dayStart", span = { GridItemSpan(2) }) {
+                            DateSectionHeader(dayStartMillis = dayStart)
+                        }
+                        items(items = dayItems, key = { it.id }) { mediaFile ->
+                            MediaGridItem(
+                                mediaFile = mediaFile,
+                                onClick = { viewModel.onEvent(ImageUiEvent.SelectImage(mediaFile)) },
+                            )
                         }
                     }
                 }
@@ -192,61 +220,345 @@ fun ImageScreen(
 }
 
 @Composable
+private fun SyncPreviewGridItem(
+    item: MediaSyncPreviewItem,
+    isActiveDownload: Boolean,
+    onOpenDownloaded: (MediaFilesEntity) -> Unit,
+) {
+    val mediaType = MediaFileUtils.typeOf(item.fpath)
+    val canOpen = item.isDownloaded && !item.filePath.isNullOrBlank()
+
+    if (canOpen) {
+        Card(
+            modifier = Modifier.aspectRatio(1f),
+            shape = RoundedCornerShape(8.dp),
+            onClick = {
+                onOpenDownloaded(
+                    MediaFilesEntity(
+                        filePath = item.filePath!!,
+                        type = MediaFileUtils.typeString(item.filePath),
+                        createdAt = MediaFileUtils.resolveCreatedAt(
+                            item.filePath,
+                            item.fileModifiedTime,
+                        ),
+                        size = item.fileSize,
+                    ),
+                )
+            },
+        ) {
+            SyncPreviewGridContent(
+                item = item,
+                mediaType = mediaType,
+                useDownloadedFile = true,
+                isActiveDownload = false,
+            )
+        }
+    } else {
+        Card(
+            modifier = Modifier.aspectRatio(1f),
+            shape = RoundedCornerShape(8.dp),
+        ) {
+            SyncPreviewGridContent(
+                item = item,
+                mediaType = mediaType,
+                useDownloadedFile = false,
+                isActiveDownload = isActiveDownload,
+            )
+        }
+    }
+}
+
+@Composable
+private fun SyncPreviewGridContent(
+    item: MediaSyncPreviewItem,
+    mediaType: MediaFileType,
+    useDownloadedFile: Boolean,
+    isActiveDownload: Boolean,
+) {
+    Box(modifier = Modifier.fillMaxSize()) {
+        when {
+            useDownloadedFile && mediaType == MediaFileType.AUDIO -> {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color(0xFF37474F)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.VolumeUp,
+                        contentDescription = stringResource(R.string.play_audio),
+                        tint = Color.White.copy(alpha = 0.85f),
+                        modifier = Modifier.size(48.dp),
+                    )
+                }
+            }
+
+            useDownloadedFile -> {
+                AsyncImage(
+                    model = item.filePath,
+                    contentDescription = item.fpath,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop,
+                )
+            }
+
+            mediaType == MediaFileType.AUDIO -> {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color(0xFF37474F)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.VolumeUp,
+                        contentDescription = null,
+                        tint = Color.White.copy(alpha = 0.85f),
+                        modifier = Modifier.size(48.dp),
+                    )
+                }
+            }
+
+            else -> {
+                AsyncImage(
+                    model = item.thumbnailUrl,
+                    contentDescription = item.fpath,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop,
+                )
+            }
+        }
+
+        if (!useDownloadedFile) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.45f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                if (isActiveDownload) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(32.dp),
+                        color = Color.White,
+                        strokeWidth = 3.dp,
+                    )
+                }
+            }
+        }
+
+        if (mediaType == MediaFileType.VIDEO) {
+            Icon(
+                imageVector = Icons.Default.PlayCircleOutline,
+                contentDescription = stringResource(R.string.play_video),
+                tint = Color.White.copy(alpha = 0.8f),
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .size(48.dp),
+            )
+        }
+
+        if (useDownloadedFile && item.fileSize > 0) {
+            Text(
+                text = formatFileSize(item.fileSize),
+                color = Color.White,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Medium,
+                textAlign = TextAlign.End,
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(8.dp)
+                    .background(
+                        Color.Black.copy(alpha = 0.3f),
+                        RoundedCornerShape(4.dp),
+                    )
+                    .padding(horizontal = 4.dp, vertical = 2.dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun DateSectionHeader(dayStartMillis: Long) {
+    val todayStart = remember { MediaFileUtils.startOfDay(System.currentTimeMillis()) }
+    val yesterdayStart = todayStart - 24 * 60 * 60 * 1000
+    val formattedDate = remember(dayStartMillis) {
+        DateFormat.getDateInstance(DateFormat.MEDIUM, java.util.Locale.getDefault())
+            .format(Date(dayStartMillis))
+    }
+    val label = when (dayStartMillis) {
+        todayStart -> stringResource(R.string.date_today)
+        yesterdayStart -> stringResource(R.string.date_yesterday)
+        else -> formattedDate
+    }
+
+    Text(
+        text = label,
+        fontSize = 16.sp,
+        fontWeight = FontWeight.SemiBold,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 8.dp, bottom = 4.dp),
+    )
+}
+
+@Composable
+private fun MediaGridItem(
+    mediaFile: MediaFilesEntity,
+    onClick: () -> Unit,
+) {
+    val mediaType = MediaFileUtils.typeOf(mediaFile.filePath)
+
+    Card(
+        modifier = Modifier.aspectRatio(1f),
+        shape = RoundedCornerShape(8.dp),
+        onClick = onClick,
+    ) {
+        Box(modifier = Modifier.fillMaxSize()) {
+            when (mediaType) {
+                MediaFileType.AUDIO -> {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(Color(0xFF37474F)),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.VolumeUp,
+                            contentDescription = stringResource(R.string.play_audio),
+                            tint = Color.White.copy(alpha = 0.85f),
+                            modifier = Modifier.size(48.dp),
+                        )
+                    }
+                }
+
+                else -> {
+                    AsyncImage(
+                        model = mediaFile.filePath,
+                        contentDescription = mediaFile.type,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop,
+                    )
+                }
+            }
+
+            if (mediaType == MediaFileType.VIDEO) {
+                Icon(
+                    imageVector = Icons.Default.PlayCircleOutline,
+                    contentDescription = stringResource(R.string.play_video),
+                    tint = Color.White.copy(alpha = 0.8f),
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .size(48.dp),
+                )
+            }
+
+            Text(
+                text = formatFileSize(mediaFile.size),
+                color = Color.White,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Medium,
+                textAlign = TextAlign.End,
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(8.dp)
+                    .background(
+                        Color.Black.copy(alpha = 0.3f),
+                        RoundedCornerShape(4.dp),
+                    )
+                    .padding(horizontal = 4.dp, vertical = 2.dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun SyncErrorBubble(message: String) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(8.dp),
+        color = TextRedBackground,
+    ) {
+        Text(
+            text = message,
+            color = TextRed,
+            fontSize = 14.sp,
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+        )
+    }
+}
+
+@Composable
 private fun SyncStatusHeader(
     progress: Float,
     currentFileIndex: Int,
     totalFiles: Int,
     isSyncing: Boolean,
     speed: String,
-    onSyncClick: () -> Unit
+    pendingDeviceMediaCount: Int?,
+    onSyncClick: () -> Unit,
 ) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween
-    ) {
+    val showSyncButton = !isSyncing && pendingDeviceMediaCount != null && pendingDeviceMediaCount > 0
 
-        Box(
-            modifier = Modifier
-                .weight(1f)
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
         ) {
-
-            LinearProgressIndicator(
-                progress = { progress },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(22.dp)
-                    .clip(RoundedCornerShape(6.dp)),
-            )
-
-            Text(
-                text = speed,
-                fontSize = 14.sp,
-                color = Color.White,
-                modifier = Modifier.align(Alignment.Center),
-                fontWeight = FontWeight.Medium
-            )
-
-
-        }
-
-
-
-        Spacer(modifier = Modifier.width(12.dp))
-
-        if (isSyncing) {
-            Text(
-                text = "$currentFileIndex/$totalFiles",
-                fontSize = 14.sp,
-                fontWeight = FontWeight.Medium
-            )
-        } else {
-            Button(
-                onClick = onSyncClick,
-                enabled = !isSyncing,
-                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
+            Box(
+                modifier = Modifier.weight(1f),
             ) {
-                Text(stringResource(R.string.sync))
+                if (isSyncing) {
+                    LinearProgressIndicator(
+                        progress = { progress },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(22.dp)
+                            .clip(RoundedCornerShape(6.dp)),
+                    )
+
+                    Text(
+                        text = speed,
+                        fontSize = 14.sp,
+                        color = Color.White,
+                        modifier = Modifier.align(Alignment.Center),
+                        fontWeight = FontWeight.Medium,
+                    )
+                } else {
+                    Text(
+                        text = when (pendingDeviceMediaCount) {
+                            null -> stringResource(R.string.pending_media_count_checking)
+                            0 -> stringResource(R.string.no_pending_media)
+                            else -> stringResource(
+                                R.string.pending_media_count,
+                                pendingDeviceMediaCount,
+                            )
+                        },
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = Color(0xFF424242),
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.width(12.dp))
+
+            when {
+                isSyncing -> {
+                    Text(
+                        text = "$currentFileIndex/$totalFiles",
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Medium,
+                    )
+                }
+
+                showSyncButton -> {
+                    Button(
+                        onClick = onSyncClick,
+                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                    ) {
+                        Text(stringResource(R.string.sync))
+                    }
+                }
             }
         }
     }
@@ -254,24 +566,97 @@ private fun SyncStatusHeader(
 
 @Composable
 private fun MediaPreviewDialog(mediaFile: MediaFilesEntity, onDismiss: () -> Unit) {
-    val videoExtensions = setOf("mp4", "mov", "avi", "mkv", "webm")
-    val isVideo = videoExtensions.contains(File(mediaFile.filePath).extension.lowercase())
+    val mediaType = MediaFileUtils.typeOf(mediaFile.filePath)
 
     Dialog(
         onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false) // 全屏
+        properties = DialogProperties(usePlatformDefaultWidth = false),
     ) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .background(Color.Black),
-            contentAlignment = Alignment.Center
+            contentAlignment = Alignment.Center,
         ) {
-            if (isVideo) {
-                VideoPlayer(videoPath = mediaFile.filePath)
-            } else {
-                ZoomableImage(imagePath = mediaFile.filePath)
+            when (mediaType) {
+                MediaFileType.VIDEO -> VideoPlayer(videoPath = mediaFile.filePath)
+                MediaFileType.AUDIO -> AudioPlayer(audioPath = mediaFile.filePath)
+                else -> ZoomableImage(imagePath = mediaFile.filePath)
             }
+        }
+    }
+}
+
+@androidx.annotation.OptIn(UnstableApi::class)
+@OptIn(UnstableApi::class)
+@Composable
+private fun AudioPlayer(audioPath: String) {
+    val context = LocalContext.current
+    var isPlaying by remember(audioPath) { mutableStateOf(true) }
+
+    val exoPlayer = remember {
+        ExoPlayer.Builder(context).build().apply {
+            playWhenReady = true
+        }
+    }
+
+    LaunchedEffect(audioPath) {
+        val audioUri = Uri.fromFile(File(audioPath))
+        exoPlayer.setMediaItem(MediaItem.fromUri(audioUri))
+        exoPlayer.prepare()
+        isPlaying = true
+    }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            exoPlayer.release()
+        }
+    }
+
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(24.dp),
+        modifier = Modifier.padding(horizontal = 32.dp),
+    ) {
+        Icon(
+            imageVector = Icons.Default.VolumeUp,
+            contentDescription = null,
+            tint = Color.White.copy(alpha = 0.9f),
+            modifier = Modifier.size(72.dp),
+        )
+
+        Text(
+            text = File(audioPath).name,
+            color = Color.White.copy(alpha = 0.85f),
+            fontSize = 14.sp,
+            textAlign = TextAlign.Center,
+            maxLines = 2,
+        )
+
+        IconButton(
+            onClick = {
+                if (exoPlayer.isPlaying) {
+                    exoPlayer.pause()
+                    isPlaying = false
+                } else {
+                    exoPlayer.play()
+                    isPlaying = true
+                }
+            },
+            modifier = Modifier.size(72.dp),
+        ) {
+            Icon(
+                imageVector = if (isPlaying) {
+                    Icons.Default.PauseCircleOutline
+                } else {
+                    Icons.Default.PlayCircleOutline
+                },
+                contentDescription = stringResource(
+                    if (isPlaying) R.string.pause_audio else R.string.play_audio,
+                ),
+                tint = Color.White,
+                modifier = Modifier.fillMaxSize(),
+            )
         }
     }
 }

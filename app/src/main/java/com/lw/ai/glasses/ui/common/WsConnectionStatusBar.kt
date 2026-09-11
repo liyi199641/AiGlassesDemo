@@ -1,11 +1,16 @@
 package com.lw.ai.glasses.ui.common
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -13,9 +18,12 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -28,68 +36,111 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.fission.wear.glasses.sdk.constant.GlassesConstant
 import com.lw.ai.glasses.R
 
-private val WsConnectedBackground = Color(0x2617E559)
-private val WsConnectedContent = Color(0xFF17E559)
-private val WsConnectingBackground = Color(0x26FFAC29)
-private val WsConnectingContent = Color(0xFFFFAC29)
-private val WsDisconnectedBackground = Color(0x26FF007E)
-private val WsDisconnectedContent = Color(0xFFFF494C)
+private val WsConnectingBackground = Color(0xFFFFAC29)
+private val WsConnectingOnBackground = Color(0xFF3D2E00)
+private val WsFailedBackground = Color(0xFFFF494C)
+private val WsFailedOnBackground = Color.White
+private val WsDisabledBackground = Color(0xFF616161)
+private val WsDisabledOnBackground = Color.White
 
+private val NotificationMaxWidth = 320.dp
+private val TopAppBarClearance = 56.dp
+
+/**
+ * 顶部居中浮层通知：不遮挡返回按钮；仅在连接中/失败时展示。
+ */
 @Composable
-fun WsConnectionStatusBar(
+fun WsConnectionTopNotification(
     state: WsConnectionUiState,
     onReconnect: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val (backgroundColor, contentColor) = when {
-        state.isConnected -> WsConnectedBackground to WsConnectedContent
-        state.isConnecting -> WsConnectingBackground to WsConnectingContent
-        else -> WsDisconnectedBackground to WsDisconnectedContent
-    }
+    val visible = state.shouldShowWsIssueNotification
+    val isConnecting = state.isWsConnectingPhase
+    val isAutoConnectDisabled = state.isAutoConnectAiDisabled
 
-    val statusText = when {
-        state.reconnectRequired -> stringResource(R.string.ws_status_reconnect_required)
-        state.isConnecting -> stringResource(R.string.ws_status_connecting)
-        state.isConnected -> stringResource(R.string.ws_status_connected)
-        state.reconnectAttempts > 0 -> stringResource(
-            R.string.ws_status_reconnecting,
-            state.reconnectAttempts.coerceAtMost(WS_MAX_RECONNECT_ATTEMPTS),
-            WS_MAX_RECONNECT_ATTEMPTS,
-        )
-        else -> stringResource(R.string.ws_status_disconnected)
-    }
-
-    Row(
+    Box(
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(10.dp))
-            .background(backgroundColor)
-            .padding(horizontal = 12.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
+            .statusBarsPadding()
+            .padding(top = TopAppBarClearance, start = 16.dp, end = 16.dp),
+        contentAlignment = Alignment.TopCenter,
     ) {
-        WsStatusIndicator(
-            connectionState = state.connectionState,
-            contentColor = contentColor,
-        )
-        Text(
-            text = statusText,
-            fontWeight = if (state.reconnectRequired) FontWeight.SemiBold else FontWeight.Medium,
-            color = contentColor,
-            modifier = Modifier.weight(1f),
-        )
-        if (state.reconnectRequired || state.isDisconnected) {
-            if (state.reconnectRequired) {
-                TextButton(onClick = onReconnect) {
-                    Text(
-                        text = stringResource(R.string.ws_action_reconnect),
-                        color = contentColor,
-                        fontWeight = FontWeight.SemiBold,
+        AnimatedVisibility(
+            visible = visible,
+            enter = slideInVertically(initialOffsetY = { -it / 2 }) + fadeIn(tween(220)),
+            exit = slideOutVertically(targetOffsetY = { -it / 2 }) + fadeOut(tween(180)),
+        ) {
+            val backgroundColor = when {
+                isConnecting -> WsConnectingBackground
+                isAutoConnectDisabled -> WsDisabledBackground
+                else -> WsFailedBackground
+            }
+            val contentColor = when {
+                isConnecting -> WsConnectingOnBackground
+                isAutoConnectDisabled -> WsDisabledOnBackground
+                else -> WsFailedOnBackground
+            }
+
+            val statusText = when {
+                isAutoConnectDisabled -> stringResource(R.string.ws_auto_connect_ai_disabled_hint)
+                isConnecting && state.reconnectAttempts > 0 -> stringResource(
+                    R.string.ws_status_reconnecting,
+                    state.reconnectAttempts.coerceAtMost(WS_MAX_RECONNECT_ATTEMPTS),
+                    WS_MAX_RECONNECT_ATTEMPTS,
+                )
+                isConnecting -> stringResource(R.string.ws_status_connecting)
+                state.reconnectRequired -> stringResource(R.string.ws_status_reconnect_required)
+                else -> stringResource(R.string.ws_status_connection_failed)
+            }
+
+            Surface(
+                modifier = Modifier.widthIn(max = NotificationMaxWidth),
+                shape = RoundedCornerShape(12.dp),
+                color = backgroundColor,
+                shadowElevation = 6.dp,
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    WsStatusIndicator(
+                        connectionState = when {
+                            isConnecting -> GlassesConstant.WS_CONNECTION_STATE_CONNECTING
+                            else -> GlassesConstant.WS_CONNECTION_STATE_DISCONNECTED
+                        },
+                        contentColor = contentColor,
+                        showPulse = !isConnecting && !isAutoConnectDisabled,
                     )
+                    Text(
+                        text = statusText,
+                        fontWeight = FontWeight.Medium,
+                        color = contentColor,
+                        textAlign = TextAlign.Start,
+                        modifier = Modifier.weight(1f, fill = false),
+                    )
+                    if (
+                        state.autoConnectAiEnabled &&
+                        !isConnecting &&
+                        (state.reconnectRequired || state.isWsConnectionFailed)
+                    ) {
+                        TextButton(
+                            onClick = onReconnect,
+                            modifier = Modifier.padding(start = 0.dp),
+                        ) {
+                            Text(
+                                text = stringResource(R.string.ws_action_reconnect),
+                                color = contentColor,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -100,24 +151,17 @@ fun WsConnectionStatusBar(
 private fun WsStatusIndicator(
     connectionState: Int,
     contentColor: Color,
+    showPulse: Boolean = true,
 ) {
     when {
         connectionState == GlassesConstant.WS_CONNECTION_STATE_CONNECTING -> {
             CircularProgressIndicator(
-                modifier = Modifier.size(18.dp),
+                modifier = Modifier.size(16.dp),
                 strokeWidth = 2.dp,
                 color = contentColor,
             )
         }
-        connectionState == GlassesConstant.WS_CONNECTION_STATE_CONNECTED -> {
-            Box(
-                modifier = Modifier
-                    .size(10.dp)
-                    .clip(CircleShape)
-                    .background(contentColor),
-            )
-        }
-        else -> {
+        showPulse -> {
             val transition = rememberInfiniteTransition(label = "ws_disconnected_pulse")
             val pulse by transition.animateFloat(
                 initialValue = 0.45f,
@@ -133,6 +177,14 @@ private fun WsStatusIndicator(
                     .size(10.dp)
                     .scale(0.85f + pulse * 0.15f)
                     .alpha(0.5f + pulse * 0.5f)
+                    .clip(CircleShape)
+                    .background(contentColor.copy(alpha = 0.85f)),
+            )
+        }
+        else -> {
+            Box(
+                modifier = Modifier
+                    .size(10.dp)
                     .clip(CircleShape)
                     .background(contentColor.copy(alpha = 0.85f)),
             )

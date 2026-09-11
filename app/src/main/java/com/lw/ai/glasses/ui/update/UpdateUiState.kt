@@ -1,6 +1,7 @@
 package com.lw.ai.glasses.ui.update
 
 import com.fission.wear.glasses.sdk.constant.GlassesConstant
+import com.fission.wear.glasses.sdk.data.dto.DeviceVersionInfoDTO
 
 enum class OtaStatus {
     IDLE,           // 空闲状态
@@ -19,19 +20,31 @@ data class UpdateUiState(
     val statusText: String = "",
     val recentFiles: List<FirmwareFile> = emptyList(),
     val selectedFileId: String? = null,
+    /** RTK 方案选中的 WiFi 固件压缩包 id（其他方案不使用）。 */
+    val selectedWifiZipId: String? = null,
+    /** 当前 SDK 渠道，RTK 方案需要 BT 文件 + WiFi 压缩包组合升级。 */
+    val currentChannel: GlassesConstant.ChannelType = GlassesConstant.ChannelType.LY,
+    /** 设备当前版本信息（固件 / WiFi / 硬件）。 */
+    val deviceVersionInfo: DeviceVersionInfoDTO? = null,
+    /** 从文件名解析出的版本号，可手动修改后用于 OTA。 */
+    val firmwareVersion: String = "",
     val availableOtaTypes: List<GlassesConstant.OtaType> = listOf(GlassesConstant.OtaType.FIRMWARE, GlassesConstant.OtaType.WIFI_ISP),
     val selectedOtaType: GlassesConstant.OtaType = GlassesConstant.OtaType.FIRMWARE,
-)
+) {
+    val isRtk: Boolean get() = currentChannel == GlassesConstant.ChannelType.RTK
+}
 
 data class FirmwareFile(
     val id: String,
     val name: String,
     val path: String,
     val sizeInMb: Float,
-    val addedTime: Long
+    val addedTime: Long,
+    /** true 表示这是一个 WiFi 固件压缩包（RTK WiFi 升级包，内含 ota.json，由 SDK 解压）。 */
+    val isWifiZip: Boolean = false
 ) {
     fun toJson(): String {
-        return "$id|SPL|$name|SPL|$path|SPL|$sizeInMb|SPL|$addedTime"
+        return "$id|SPL|$name|SPL|$path|SPL|$sizeInMb|SPL|$addedTime|SPL|$isWifiZip"
     }
 
     companion object {
@@ -43,7 +56,8 @@ data class FirmwareFile(
                     name = parts[1],
                     path = parts[2],
                     sizeInMb = parts[3].toFloat(),
-                    addedTime = parts[4].toLong()
+                    addedTime = parts[4].toLong(),
+                    isWifiZip = parts.getOrNull(5)?.toBooleanStrictOrNull() ?: false
                 )
             } catch (e: Exception) {
                 null

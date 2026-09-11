@@ -3,6 +3,22 @@ package com.lw.ai.glasses.ui.devicecontrol
 import androidx.annotation.StringRes
 import com.fission.wear.glasses.sdk.data.model.GlassesFeaturesConfigInfo
 
+enum class AiPhotoBleStatus {
+    Idle,
+    Waiting,
+    Transferring,
+    Success,
+    Failed,
+}
+
+data class AiPhotoBleResult(
+    val status: AiPhotoBleStatus = AiPhotoBleStatus.Idle,
+    val imageFilePath: String? = null,
+    val imageBytesSize: Int? = null,
+    val errorMessage: String? = null,
+    val aiRecognitionWarning: String? = null,
+)
+
 data class DeviceControlUiState(
     val systemVolume: Int = 0,
     val mediaVolume: Int = 0,
@@ -15,6 +31,7 @@ data class DeviceControlUiState(
     val isMusicPlaying: Boolean = false,
     val isImporting: Boolean = false,
     val isWearing: Boolean? = null,
+    val aiPhotoBleResult: AiPhotoBleResult = AiPhotoBleResult(),
 )
 
 data class FeatureSupportRow(

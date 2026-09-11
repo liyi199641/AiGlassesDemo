@@ -44,6 +44,8 @@ data class HomeUiState(
     val isCharging: Boolean? = null,
     val connectedDeviceName: String? = null,
     val pendingSyncPhotosCount: Int = 0,
+    /** LY 等方案展示 BT 音频子状态；RTK 由 SDK 内部配对，不在首页展示 BT 行。 */
+    val showBtConnectionStatus: Boolean = true,
     val features: List<Feature> = emptyList()
 ) {
     companion object {

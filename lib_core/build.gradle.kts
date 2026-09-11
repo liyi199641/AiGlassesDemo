@@ -1,3 +1,6 @@
+import java.io.FileInputStream
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.library)
     alias(libs.plugins.kotlin.android)
@@ -6,6 +9,19 @@ plugins {
     alias(libs.plugins.hilt)
     alias(libs.plugins.kotlin.parcelize)
 }
+
+val packagingProps: Properties = Properties().also { props ->
+    val file = rootProject.file("douyin.properties")
+    if (file.exists()) {
+        FileInputStream(file).use { props.load(it) }
+    }
+}
+
+fun cfg(key: String, default: String): String =
+    packagingProps.getProperty(key)?.trim()?.takeIf { it.isNotEmpty() } ?: default
+
+val packagingEnabled: Boolean = cfg("CONFIG_ENABLED", "false").toBoolean()
+
 android {
     namespace = "com.lw.top.lib_core"
     compileSdk = 36
@@ -14,6 +30,11 @@ android {
         minSdk = 26
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         consumerProguardFiles("consumer-rules.pro")
+
+        val douyinAppId = if (packagingEnabled) cfg("DOUYIN_APP_ID", "") else ""
+        val douyinAppName = if (packagingEnabled) cfg("DOUYIN_APP_NAME", "") else ""
+        buildConfigField("String", "DOUYIN_APP_ID", "\"$douyinAppId\"")
+        buildConfigField("String", "DOUYIN_APP_NAME", "\"$douyinAppName\"")
 
         javaCompileOptions {
             annotationProcessorOptions {
@@ -26,11 +47,9 @@ android {
         }
     }
 
-
     buildTypes {
         release {
             isMinifyEnabled = false
-
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -38,10 +57,7 @@ android {
             buildConfigField("boolean", "USE_MOCK_API", "false")
         }
         getByName("debug") {
-            // 为 debug 构建类型设置 USE_MOCK_API 为 true
             buildConfigField("boolean", "USE_MOCK_API", "false")
-            // 如果您想在 debug 构建中默认启用 mock，可以这样做
-            // isDebuggable = true // debug 构建类型默认就是 debuggable
         }
     }
 
@@ -60,8 +76,6 @@ android {
 }
 
 dependencies {
-
-    //compose bom
     api(libs.androidx.core.ktx)
     api(libs.androidx.lifecycle.runtime.ktx)
     api(libs.androidx.activity.compose)
@@ -78,50 +92,40 @@ dependencies {
     api(libs.androidx.compose.foundation)
     api(libs.androidx.appcompat)
 
-    //hilt
     ksp(libs.hilt.android.compiler)
     implementation(libs.hilt.android)
     implementation(libs.hilt.navigation.compose)
 
-    //network
     api(libs.okhttp)
     api(libs.okhttp.logging)
     api(libs.retrofit)
     api(libs.retrofit.gson)
     api(libs.gson)
 
-    //room
     api(libs.room.runtime)
     api(libs.room.ktx)
     api(libs.room.paging)
     ksp(libs.room.compiler)
 
-    //util
     api(libs.utilcodex)
 
-    //coil
     api(libs.bundles.coil)
     api(libs.bundles.media3)
 
-    //preferences
     api(libs.androidx.datastore.preferences)
     api(libs.androidx.preference)
 
     api(libs.webkit)
-
     api(libs.libpag)
 
     api(libs.rxjava3)
     api(libs.rxandroid)
     api(libs.rxandroidble)
 
-    api(libs.libvlc)
     api(libs.instavision.ffmpeg)
     api(libs.volcengine.douyin.sdk)
     api(libs.douyin.open.sdk.common)
     api(libs.douyin.open.sdk.china.external)
-
-
 
     testApi(libs.junit)
     androidTestApi(libs.androidx.junit)

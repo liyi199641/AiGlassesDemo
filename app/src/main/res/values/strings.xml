@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">LinWearAiGlasses</string>
+    <string name="app_name">LwAiGlass</string>
     <string name="cancel">Cancel</string>
     <string name="ok">Confirm</string>
     <string name="loading">Loading</string>
@@ -17,7 +17,7 @@
     <string name="not_set">Not set</string>
     <string name="separator_comma">, </string>
 
-    <string name="feature_sync_photos">Sync Photos</string>
+    <string name="feature_sync_photos">Sync Media Files</string>
     <string name="feature_device_control">Device Control</string>
     <string name="feature_ai_chat">AI Chat / Vision</string>
     <string name="feature_ai_translate">AI Translate</string>
@@ -31,8 +31,8 @@
     <string name="environment_settings">Environment Settings</string>
     <string name="app_settings_title">App Settings</string>
     <string name="auto_connect_ai_settings">AI Connection</string>
-    <string name="auto_connect_ai_settings_hint">When enabled, AI service connects automatically after glasses connect</string>
-    <string name="auto_connect_ai_label">Auto-connect AI</string>
+    <string name="auto_connect_ai_settings_hint">When enabled, AI service is activated after glasses connect</string>
+    <string name="auto_connect_ai_label">Enable AI</string>
     <string name="environment_switch">Environment Switch</string>
     <string name="environment_switch_hint">Applies globally after selection and is saved</string>
     <string name="sdk_channel_settings">SDK Channel</string>
@@ -47,6 +47,9 @@
     <string name="local_ws_address">Custom AI Service Address</string>
     <string name="save_local_environment">Save Custom Environment</string>
     <string name="scanned_devices">Scanned Devices</string>
+    <string name="scanned_device_adaptation">Adapter: %1$s</string>
+    <string name="scanned_device_channel_unknown">Channel unknown</string>
+    <string name="scanned_device_channel_unrecognized">Unable to detect device SDK channel from advertisement</string>
     <string name="no_devices_found">No devices found</string>
     <string name="connected">Connected</string>
     <string name="connecting_device">Connecting to device...</string>
@@ -74,8 +77,6 @@
     <string name="env_europe">Production (Europe)</string>
     <string name="env_singapore">Production (Singapore)</string>
     <string name="env_local">Custom</string>
-    <string name="env_xfusion_direct">Vendor direct (XFusion test)</string>
-    <string name="env_xfusion_direct_voice_test">Vendor direct (voice test)</string>
 
     <string name="device_control_title">Device Control</string>
     <string name="music_control">Music Control</string>
@@ -93,10 +94,27 @@
     <string name="start_video_recording">Start Video Recording</string>
     <string name="stop_video_recording">Stop Video Recording</string>
     <string name="photo_and_ai">Photo &amp; AI</string>
-    <string name="photo_and_ai_summary">Take photos for AI recognition (streamed back) or local storage, and control AI chat</string>
+    <string name="photo_and_ai_summary">Take photos for AI recognition (streamed back) or local storage</string>
     <string name="take_picture">Take Photo</string>
     <string name="take_picture_for_ai">Photo for AI</string>
     <string name="take_picture_to_device">Save Photo on Device</string>
+    <string name="burst_test_title">Burst Test</string>
+    <string name="burst_test_summary">Take multiple photos to device storage; each shot waits until pending sync count +1</string>
+    <string name="burst_test_count_label">Photo count</string>
+    <string name="burst_test_start">Start Burst Test</string>
+    <string name="burst_test_stop">Stop</string>
+    <string name="burst_test_status_idle">Idle · pending sync: %1$d</string>
+    <string name="burst_test_status_idle_unknown">Idle · pending sync: unknown</string>
+    <string name="burst_test_status_running">Running %1$d / %2$d</string>
+    <string name="burst_test_status_completed">Completed %1$d photos</string>
+    <string name="burst_test_status_failed">Failed</string>
+    <string name="burst_test_status_cancelled">Cancelled</string>
+    <string name="burst_test_preparing">Preparing burst test…</string>
+    <string name="burst_test_shooting">Shooting photo %1$d / %2$d…</string>
+    <string name="burst_test_completed">Burst test completed: %1$d photos</string>
+    <string name="burst_test_cancelled">Burst test cancelled</string>
+    <string name="burst_test_pending_count_unavailable">Unable to read pending sync count</string>
+    <string name="burst_test_wait_timeout">Photo %1$d timed out: pending sync count did not reach %2$d</string>
     <string name="start_ai">Start AI</string>
     <string name="stop_ai">Stop AI</string>
     <string name="interrupt_ai_chat">Interrupt AI Chat</string>
@@ -109,6 +127,15 @@
     <string name="refresh_device_status">Refresh Device Status</string>
     <string name="action_status_taking_photo">Taking photo…</string>
     <string name="action_status_photo_idle">Not taking photo</string>
+    <string name="ai_photo_ble_result_title">AI Photo BLE Upload Result</string>
+    <string name="ai_photo_ble_status_waiting">Taking photo on device…</string>
+    <string name="ai_photo_ble_status_transferring">Receiving image via BLE…</string>
+    <string name="ai_photo_ble_status_success">BLE upload completed</string>
+    <string name="ai_photo_ble_status_failed">BLE upload failed</string>
+    <string name="ai_photo_ble_size">Image size: %1$s</string>
+    <string name="ai_photo_ble_file_path">Saved to: %1$s</string>
+    <string name="ai_photo_ble_ai_warning">AI recognition note: %1$s</string>
+    <string name="ai_photo_ble_preview">AI photo preview</string>
     <string name="action_status_recording_audio">Recording…</string>
     <string name="action_status_recording_audio_idle">Not recording</string>
     <string name="action_status_recording_video">Recording video…</string>
@@ -124,6 +151,8 @@
     <string name="ws_status_connecting">Connecting to AI service…</string>
     <string name="ws_status_connected">AI service connected</string>
     <string name="ws_status_disconnected">AI service disconnected</string>
+    <string name="ws_status_connection_failed">AI service connection failed</string>
+    <string name="ws_auto_connect_ai_disabled_hint">Please enable AI in App Settings first</string>
     <string name="ws_status_reconnecting">Reconnecting AI service (%1$d/%2$d)…</string>
     <string name="ws_status_reconnect_required">AI service reconnect limit reached. Tap to reconnect manually.</string>
     <string name="ws_action_reconnect">Reconnect</string>
@@ -164,7 +193,10 @@
     <string name="restore_factory">Factory Reset</string>
     <string name="restore_factory_confirm_message">This will clear all glasses settings and reboot. Continue?</string>
     <string name="unbinding">Unbinding...</string>
-    <string name="set_record_duration">Set Recording Duration</string>
+    <string name="set_record_duration">Set Video Duration</string>
+    <string name="set_audio_record_duration">Set Audio Recording Duration</string>
+    <string name="video_record_duration">Video Duration</string>
+    <string name="audio_record_duration">Audio Recording Duration</string>
     <string name="duration_seconds_label">Duration (seconds)</string>
     <string name="duration_seconds">%1$d seconds</string>
     <string name="duration_value_seconds">%1$s seconds</string>
@@ -226,6 +258,9 @@
     <string name="agent_audio_playback_on">Reply audio on</string>
     <string name="agent_audio_playback_off">Reply audio off</string>
     <string name="toggle_agent_audio_playback">Toggle AI reply audio playback</string>
+    <string name="ai_dialogue_language">Dialogue language</string>
+    <string name="ai_assistant_device_control">Device AI control</string>
+    <string name="ai_assistant_dialogue_in_progress">AI dialogue in progress</string>
 
     <string name="add_calendar_confirm_title">Add Calendar Event?</string>
     <string name="ai_assistant_title">AI Assistant</string>
@@ -262,6 +297,7 @@
     <string name="unknown_error">Unknown error</string>
 
     <string name="live_title">Smart Glasses Live</string>
+    <string name="preview_title">Smart Glasses Preview</string>
     <string name="local_preview">Local Preview</string>
     <string name="douyin_push">Douyin Push</string>
     <string name="waiting_device_connection">Waiting for device connection</string>
@@ -273,11 +309,19 @@
     <string name="bitrate_suggested">Suggested: 1000000 - 5000000</string>
     <string name="live_channel_label">Live Channel</string>
     <string name="establishing_connection">Establishing connection...</string>
+    <string name="establishing_preview">Starting preview...</string>
+    <string name="starting_douyin_live">Starting Douyin live...</string>
+    <string name="stopping_live">Ending live...</string>
     <string name="disconnect_device">Disconnect Device</string>
     <string name="connect_glasses_preview">Connect Glasses and Preview</string>
     <string name="streaming">Streaming</string>
     <string name="not_streaming">Not streaming</string>
     <string name="pushing_status">Push Status</string>
+    <string name="device_streaming_active">Glasses streaming</string>
+    <string name="device_streaming_inactive">Waiting for glasses stream</string>
+    <string name="push_streaming_active">Pushing to Douyin</string>
+    <string name="push_streaming_inactive">Not pushing yet</string>
+    <string name="retry_start_douyin_live">Retry start live</string>
     <string name="live_now">Live</string>
     <string name="idle">Idle</string>
     <string name="douyin_auth">Douyin Authorization</string>
@@ -286,6 +330,37 @@
     <string name="connect_glasses_start_push">Connect Glasses and Start Push</string>
     <string name="wifi_network_not_found">No available Wi-Fi network found. Make sure the phone is connected to the glasses hotspot</string>
     <string name="douyin_live_initializing">Douyin Live is initializing. Try again later</string>
+    <string name="live_preview_push">Preview + Live</string>
+    <string name="live_mode_label">Streaming Mode</string>
+    <string name="live_ap_enable_cooldown">Please wait %1$d seconds before starting live streaming again (AP hotspot cooldown)</string>
+    <string name="live_mode_preview">Preview Only</string>
+    <string name="live_mode_preview_desc">Local preview on phone, no platform push</string>
+    <string name="live_mode_push">Push Only</string>
+    <string name="live_mode_push_desc">Push to Douyin directly, no local preview</string>
+    <string name="live_mode_preview_push">Preview + Push (Douyin)</string>
+    <string name="live_mode_preview_push_desc">Fetch Douyin RTMP URL first, then preview and push</string>
+    <string name="live_mode_preview_push_manual">Preview + Push (Manual URL)</string>
+    <string name="live_mode_preview_push_manual_desc">Preview locally and push to a manually entered RTMP URL</string>
+    <string name="manual_push_url_label">RTMP Push URL</string>
+    <string name="manual_push_url_hint">rtmp://...</string>
+    <string name="manual_push_url_required">Please enter an RTMP push URL</string>
+    <string name="push_only_in_progress">Push-only live</string>
+    <string name="establishing_push">Starting push stream...</string>
+    <string name="confirm_start_live">Start Live</string>
+    <string name="confirm_start_preview">Start Preview</string>
+    <string name="stop_live">Stop Live</string>
+    <string name="stop_preview">Stop Preview</string>
+    <string name="live_in_progress">Live</string>
+    <string name="preview_in_progress">Previewing</string>
+    <string name="live_preview_mic">Microphone</string>
+    <string name="live_preview_rotate">Rotate</string>
+    <string name="live_preview_audio_phone">Phone</string>
+    <string name="live_preview_audio_a2dp">A2DP</string>
+    <string name="live_preview_a2dp_unavailable">Glasses A2DP is unavailable during live (only SCO left). Use phone speaker for preview audio.</string>
+    <string name="back_to_config">Back to Settings</string>
+    <string name="douyin_auth_required">Douyin authorization is required</string>
+    <string name="mobile_data_required_for_live">Preview is on glasses WiFi. Enable mobile data for Douyin live (disable Wi‑Fi only mode if needed)</string>
+    <string name="mobile_data_required_for_push_only">Enable mobile data for Douyin live (disable Wi‑Fi only mode if needed)</string>
 
     <string name="start_call">Start Call</string>
     <string name="video_call">Video Call</string>
@@ -307,6 +382,9 @@
     <string name="room_creation_failed">Failed to create room: %1$s</string>
     <string name="call_sender_me">Me</string>
     <string name="call_sender_other">Other party</string>
+    <string name="call_language_pair_title">Select languages for both parties</string>
+    <string name="call_my_speech_label">I speak</string>
+    <string name="call_other_speech_label">They speak</string>
 
     <string name="douyin_auth_response">code: %1$d message: %2$s</string>
     <string name="douyin_auth_success">Authorization succeeded. Granted permissions: %1$s</string>
@@ -321,24 +399,75 @@
     <string name="ai_assistant_notification_text">Keeping a real-time connection with the glasses...</string>
     <string name="ai_assistant_notification_channel">Glasses AI Assistant Keepalive</string>
     <string name="ai_assistant_notification_channel_desc">Keeps the AI Assistant network connection alive when the phone screen is off</string>
-    <string name="sync_album_title">Sync Album</string>
-    <string name="empty_images_hint">No images yet. Tap Sync.</string>
+    <string name="sync_album_title">Sync Media Files</string>
+    <string name="empty_images_hint">No synced media on this phone yet.</string>
+    <string name="pending_media_count">%1$d file(s) to sync</string>
+    <string name="pending_media_count_checking">Checking media on glasses…</string>
+    <string name="no_pending_media">No media to sync on glasses</string>
     <string name="sync">Sync</string>
+    <string name="sync_in_progress_section">Syncing</string>
     <string name="play_video">Play Video</string>
+    <string name="date_today">Today</string>
+    <string name="date_yesterday">Yesterday</string>
+    <string name="pause_audio">Pause</string>
     <string name="zoomable_image">Zoomable Image</string>
     <string name="file_syncing">Files are syncing</string>
+    <string name="file_sync_failed_unknown">Sync failed, please try again</string>
+    <string name="error_unknown_with_code">Operation failed (code %1$d)</string>
+    <string name="error_ble_not_connected">Glasses BLE is not connected</string>
+    <!-- LY Wi-Fi (media sync) 3001–3008 -->
+    <string name="error_ly_wifi_connect_timeout">Wi-Fi connection timed out</string>
+    <string name="error_ly_wifi_device_discovery_timeout">Wi-Fi device discovery timed out</string>
+    <string name="error_ly_wifi_negotiation_timeout">Wi-Fi negotiation timed out</string>
+    <string name="error_ly_wifi_unknown">Wi-Fi connection failed</string>
+    <string name="error_ly_wifi_open_error">Failed to enable glasses Wi-Fi hotspot</string>
+    <string name="error_ly_wifi_no_permission">Missing Wi-Fi / location permission</string>
+    <string name="error_ly_wifi_no_location">Please turn on location services</string>
+    <string name="error_ly_wifi_closed">Phone Wi-Fi is off</string>
+    <!-- RTK SoftAP shared 3501–3505 -->
+    <string name="error_rtk_ap_enable_failed">Failed to start glasses SoftAP. Check phone Wi-Fi and local network permission</string>
+    <string name="error_rtk_ap_info_unavailable">Glasses SoftAP info unavailable. Reconnect the device and retry</string>
+    <string name="error_rtk_wifi_join_rejected">Wi-Fi join cancelled. Allow joining the glasses hotspot when prompted</string>
+    <string name="error_rtk_wifi_join_failed">Failed to join the glasses hotspot</string>
+    <string name="error_rtk_wifi_join_timeout">Timed out joining the glasses hotspot</string>
+    <!-- Live-only -->
+    <string name="error_live_battery_query_failed">Unable to read glasses battery level. Please try again</string>
+    <string name="error_live_phone_wifi_off">Phone Wi-Fi is off. Turn it on and retry live streaming</string>
+    <string name="error_live_cellular_unavailable">Mobile data is off. Enable it for Douyin push</string>
+    <!-- Download 3101–3105 -->
+    <string name="error_download_get_file_list_failed">Failed to get media file list</string>
+    <string name="error_download_file_not_found">Media file not found on glasses</string>
+    <string name="error_download_failed">Media file download failed</string>
+    <string name="error_download_network_error">Network error while downloading media</string>
+    <string name="error_download_delete">Failed to delete media file on glasses</string>
+    <!-- OTA -->
+    <string name="error_ota_file_not_found">OTA firmware file not found</string>
+    <string name="error_ota_handshake_failed">OTA handshake failed</string>
+    <string name="error_ota_transfer_failed">OTA transfer failed</string>
+    <string name="error_ota_upgrade_failed">OTA upgrade failed on device</string>
+    <string name="error_ota_package_invalid">Invalid OTA package or version</string>
+    <string name="error_rtk_ota_device_address_empty">Device address is empty. Connect glasses first</string>
+    <string name="error_rtk_ota_dfu_connect_failed">DFU connection failed</string>
+    <string name="error_rtk_ota_dfu_prepare_failed">DFU prepare failed or timed out</string>
+    <string name="error_rtk_ota_push_failed">Failed to push firmware to glasses</string>
+    <string name="error_rtk_ota_activate_failed">Firmware activation failed</string>
+    <string name="error_rtk_ota_dfu_procedure_failed">DFU upgrade procedure failed</string>
 
     <string name="ota_title">Firmware Update (OTA)</string>
+    <string name="ota_current_version">Current Device Version</string>
     <string name="add_firmware">Add firmware</string>
+    <string name="add_firmware_zip">Add WiFi firmware zip</string>
     <string name="recent_firmware">Recent Firmware</string>
     <string name="upgrading">Upgrading...</string>
     <string name="start_upgrade">Start Upgrade</string>
     <string name="upgrade_status">Upgrade Status</string>
     <string name="empty_firmware_files">No firmware files</string>
     <string name="tap_add_firmware">Tap the button at the bottom right to add</string>
+    <string name="tap_add_firmware_rtk">Add a BT firmware file or a WiFi firmware zip via the buttons at the bottom right</string>
     <string name="upgrade_type">Upgrade type: </string>
     <string name="ota_status_choose_or_add">Choose or add firmware from the list below</string>
     <string name="ota_file_ready">File ready: %1$s</string>
+    <string name="ota_zip_ready">Zip ready: %1$s</string>
     <string name="ota_error_choose_file">Error: choose a firmware file first</string>
     <string name="ota_prepare_upgrade">Preparing upgrade: %1$s</string>
     <string name="ota_error_file_not_found">Error: selected file not found</string>
@@ -354,4 +483,6 @@
     <string name="ota_type_firmware">Firmware</string>
     <string name="ota_type_wifi_isp">Wi-Fi ISP</string>
     <string name="firmware_file_size_mb">%.2f MB</string>
+    <string name="ota_version_hint">e.g. 1.3.8 / 3.20.1.53</string>
+    <string name="ota_version_editable_hint">Parsed from filename; edit if incorrect</string>
 </resources>

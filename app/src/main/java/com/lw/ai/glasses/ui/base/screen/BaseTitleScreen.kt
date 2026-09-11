@@ -1,4 +1,4 @@
-package com.lw.ai.glasses.ui.base.screen
+
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
@@ -16,8 +16,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import com.lw.ai.glasses.R
-import com.lw.ai.glasses.ui.theme.PrimaryBackground
-import com.lw.ai.glasses.ui.theme.components.AppText
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

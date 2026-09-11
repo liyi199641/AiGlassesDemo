@@ -17,9 +17,13 @@ import com.fission.wear.glasses.sdk.events.CmdResultEvent
 import com.fission.wear.glasses.sdk.events.ConnectionStateEvent
 import com.fission.wear.glasses.sdk.events.ScanStateEvent
 import com.lw.ai.glasses.config.AiAssistantConnectionHelper
-import com.lw.ai.glasses.config.AppConfigLoader
+import com.lw.ai.glasses.config.AiDialogueLanguageDefaults
+import com.lw.ai.glasses.config.ProductSeriesResolver
 import com.lw.ai.glasses.config.SdkChannelResolver
 import com.lw.ai.glasses.service.AiAssistantService
+import com.lw.ai.glasses.state.AiAssistantConversationManager
+import com.lw.ai.glasses.state.DeviceActionStateManager
+import com.lw.ai.glasses.state.MediaSyncStateManager
 import com.lw.ai.glasses.state.WsConnectionStateManager
 import com.lw.ai.glasses.ui.home.ConnectionState
 import com.lw.top.lib_core.data.datastore.AppDataManager
@@ -39,6 +43,9 @@ class AppStartupReconnectManager @Inject constructor(
     private val bluetoothDataManager: BluetoothDataManager,
     private val appDataManager: AppDataManager,
     private val wsConnectionStateManager: WsConnectionStateManager,
+    private val aiAssistantConversationManager: AiAssistantConversationManager,
+    private val mediaSyncStateManager: MediaSyncStateManager,
+    private val deviceActionStateManager: DeviceActionStateManager,
 ) {
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val started = AtomicBoolean(false)
@@ -48,15 +55,18 @@ class AppStartupReconnectManager @Inject constructor(
         if (!started.compareAndSet(false, true)) return
 
         wsConnectionStateManager.start()
+        aiAssistantConversationManager.start()
+        mediaSyncStateManager.start()
+        deviceActionStateManager.start()
         observeGlassesEvents()
         appScope.launch {
             val environment = restoreSavedEnvironment()
             val savedAddress = bluetoothDataManager.getBluetoothAddress()
             val savedName = bluetoothDataManager.getBluetoothName()
             val isDeviceBound = !savedAddress.isNullOrBlank() && !savedName.isNullOrBlank()
-            val channel = SdkChannelResolver.loadSaved(appDataManager)
+            val channel = SdkChannelResolver.loadForSdkInit(bluetoothDataManager, appDataManager)
             if (isDeviceBound) {
-                initGlassesSdkAndAiClient(environment, channel)
+                initGlassesSdkAndAiClient(environment, channel, savedName)
             } else {
                 initAiClientOnly(environment, channel)
             }
@@ -74,9 +84,10 @@ class AppStartupReconnectManager @Inject constructor(
 
                     is ConnectionStateEvent.Connected -> {
                         bluetoothDataManager.saveBluetoothState(ConnectionState.CONNECTED.value)
-                        AiAssistantService.start(context)
+//                        AiAssistantService.start(context)
                         GlassesManage.setVoiceWakeUp(true, true)
                         GlassesManage.getBatteryLevel()
+                        GlassesManage.requestDeviceVersionInfo()
                         GlassesManage.getMediaFileCount()
                         appScope.launch {
                             AiAssistantConnectionHelper.connectIfEnabled(
@@ -84,11 +95,23 @@ class AppStartupReconnectManager @Inject constructor(
                                 bluetoothDataManager,
                             )
                         }
-                        GlassesManage.getActionState()
                     }
 
                     is ConnectionStateEvent.Disconnected -> {
                         bluetoothDataManager.saveBluetoothState(ConnectionState.DISCONNECTED.value)
+                        AiAssistantService.stop(context)
+                    }
+
+                    is ConnectionStateEvent.Idle -> {
+                        appScope.launch {
+                            val address = bluetoothDataManager.getBluetoothAddress()
+                            val state = if (address.isNullOrBlank()) {
+                                ConnectionState.IDLE
+                            } else {
+                                ConnectionState.DISCONNECTED
+                            }
+                            bluetoothDataManager.saveBluetoothState(state.value)
+                        }
                         AiAssistantService.stop(context)
                     }
 
@@ -110,20 +133,16 @@ class AppStartupReconnectManager @Inject constructor(
         val savedEnvName = appDataManager.getEnvironment()
 
         val environment = savedEnvName
-            ?.let { name ->
-                runCatching { GlassesConstant.ServerEnvironment.valueOf(name) }.getOrNull()
-                    ?.let(AppConfigLoader::sanitizeSelectableEnvironment)
-            }
+            ?.let(GlassesConstant.ServerEnvironment::fromPersistedName)
             ?: GlassesConstant.ServerEnvironment.entries.firstOrNull {
-                it.wsUrl == GlassesConstant.AI_ASSISTANT_BASE_WS_URL &&
-                    !GlassesConstant.isVendorDirectEnvironment(it)
+                it.wsUrl == GlassesConstant.AI_ASSISTANT_BASE_WS_URL
             }
             ?: GlassesConstant.ServerEnvironment.DEV
 
-        if (environment == GlassesConstant.ServerEnvironment.LOCAL) {
+        if (environment == GlassesConstant.ServerEnvironment.CUSTOM) {
             restoredLocalEnvironmentConfig = AiServerEnvironmentConfig(
-                baseUrl = savedLocalBaseUrl ?: GlassesConstant.ServerEnvironment.LOCAL.baseUrl,
-                wsUrl = savedLocalWsUrl ?: GlassesConstant.ServerEnvironment.LOCAL.wsUrl,
+                baseUrl = savedLocalBaseUrl ?: GlassesConstant.ServerEnvironment.CUSTOM.baseUrl,
+                wsUrl = savedLocalWsUrl ?: GlassesConstant.ServerEnvironment.CUSTOM.wsUrl,
             )
             AiAssistantClient.getInstance().applyServerEnvironmentToGlobals(restoredLocalEnvironmentConfig!!)
         } else {
@@ -136,8 +155,22 @@ class AppStartupReconnectManager @Inject constructor(
     private fun initGlassesSdkAndAiClient(
         environment: GlassesConstant.ServerEnvironment,
         channel: GlassesConstant.ChannelType,
+        deviceName: String?,
     ) {
-        GlassesManage.initialize(SdkConfig(true, context, channel, LogUtils.V))
+        val productSeries = ProductSeriesResolver.fromDeviceName(deviceName)
+        LogUtils.i(
+            "AppStartupReconnect",
+            "init SDK productSeries=${productSeries.code} deviceName=$deviceName"
+        )
+        GlassesManage.initialize(
+            SdkConfig(
+                true,
+                context,
+                channel,
+                LogUtils.V,
+                productSeries = productSeries,
+            )
+        )
         initAiClientOnly(environment, channel)
     }
 
@@ -152,6 +185,7 @@ class AppStartupReconnectManager @Inject constructor(
                 aiModelType = GlassesConstant.AiModelVendor.DEFAULT,
                 serverEnvironment = environment,
                 customServerEnvironment = restoredLocalEnvironmentConfig,
+                aiDialogueLanguage = AiDialogueLanguageDefaults.defaultLangType(),
             )
         )
     }
@@ -180,17 +214,4 @@ class AppStartupReconnectManager @Inject constructor(
         ) == PackageManager.PERMISSION_GRANTED
     }
 
-    private suspend fun connectAiAssistant() {
-        val address = bluetoothDataManager.getBluetoothAddress()
-        val name = bluetoothDataManager.getBluetoothName()
-        if (address.isNullOrBlank() || name.isNullOrBlank()) return
-
-        AiAssistantClient.getInstance().connectAiAssistant(
-            address,
-            name,
-            "6600",
-            "ukuSPzMnpLvLS2TTLL9S8PvUJzfTCHnu",
-            "tz5dgRLm6tXS8gRr",
-        )
-    }
 }

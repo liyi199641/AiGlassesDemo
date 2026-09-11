@@ -6,7 +6,6 @@ import android.view.TextureView
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -38,22 +37,27 @@ import androidx.compose.material.icons.filled.VideocamOff
 import androidx.compose.material.icons.filled.VoiceChat
 import androidx.compose.material.icons.filled.VolumeOff
 import androidx.compose.material.icons.filled.VolumeUp
+import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -63,17 +67,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
-import androidx.annotation.StringRes
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.fission.wear.glasses.sdk.AiAssistantClient
 import com.lw.ai.glasses.R
-import com.lw.ai.glasses.ui.common.WsConnectionStatusBar
+import com.lw.ai.glasses.ui.common.WsConnectionTopNotification
+import com.lw.ai.glasses.ui.translate.Language
+import com.lw.ai.glasses.ui.translate.LanguageSelectionSheet
 import kotlinx.coroutines.delay
-
-private data class CallLanguage(
-    val code: String,
-    @StringRes val titleRes: Int
-)
 
 @Composable
 fun CallScreen(
@@ -93,34 +93,31 @@ fun CallScreen(
         }
     }
 
-    Surface(
-        modifier = Modifier.fillMaxSize(),
-        color = MaterialTheme.colorScheme.background
-    ) {
-        Column(modifier = Modifier.fillMaxSize()) {
-            WsConnectionStatusBar(
-                state = uiState.wsConnection,
-                onReconnect = viewModel::reconnectWebSocket,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .statusBarsPadding()
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
-            )
+    Box(modifier = Modifier.fillMaxSize()) {
+        Surface(
+            modifier = Modifier.fillMaxSize(),
+            color = MaterialTheme.colorScheme.background,
+        ) {
             if (!uiState.isInCall) {
                 CallSetupContent(
                     uiState = uiState,
                     viewModel = viewModel,
                     onNavigateBack = onNavigateBack,
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.fillMaxSize(),
                 )
             } else {
                 ActiveCallContent(
                     uiState = uiState,
                     viewModel = viewModel,
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.fillMaxSize(),
                 )
             }
         }
+        WsConnectionTopNotification(
+            state = uiState.wsConnection,
+            onReconnect = viewModel::reconnectWebSocket,
+            modifier = Modifier.align(Alignment.TopCenter),
+        )
     }
 }
 
@@ -145,6 +142,7 @@ private fun CallDurationBadge(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CallSetupContent(
     uiState: CallUiState,
@@ -152,13 +150,22 @@ fun CallSetupContent(
     onNavigateBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val languages = listOf(
-        CallLanguage("en", R.string.language_english),
-        CallLanguage("ja", R.string.language_japanese),
-        CallLanguage("fr", R.string.language_french),
-        CallLanguage("de", R.string.language_german),
-        CallLanguage("zh", R.string.language_chinese)
-    )
+    var showLanguageSheet by remember { mutableStateOf(false) }
+    var isSelectingSource by remember { mutableStateOf(true) }
+
+    if (showLanguageSheet) {
+        LanguageSelectionSheet(
+            languages = uiState.allLanguages,
+            onDismissRequest = { showLanguageSheet = false },
+            onLanguageSelected = { language ->
+                if (isSelectingSource) {
+                    viewModel.setSourceLanguage(language)
+                } else {
+                    viewModel.setTargetLanguage(language)
+                }
+            },
+        )
+    }
 
     Column(
         modifier = modifier
@@ -193,22 +200,24 @@ fun CallSetupContent(
 
         Spacer(modifier = Modifier.height(32.dp))
 
-        Text(stringResource(R.string.target_translate_language), style = MaterialTheme.typography.bodyLarge)
-        languages.forEach { lang ->
-            val languageTitle = stringResource(lang.titleRes)
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { viewModel.setLanguage(lang.code) }
-                    .padding(8.dp)
-            ) {
-                RadioButton(
-                    selected = uiState.selectedLanguage == lang.code,
-                    onClick = { viewModel.setLanguage(lang.code) })
-                Text(languageTitle)
-            }
-        }
+        Text(
+            text = stringResource(R.string.call_language_pair_title),
+            style = MaterialTheme.typography.bodyLarge,
+        )
+        Spacer(modifier = Modifier.height(12.dp))
+        CallLanguageTopBar(
+            srcLang = uiState.srcLang,
+            targetLang = uiState.targetLang,
+            onSrcClick = {
+                isSelectingSource = true
+                showLanguageSheet = true
+            },
+            onTargetClick = {
+                isSelectingSource = false
+                showLanguageSheet = true
+            },
+            onSwapClick = { viewModel.swapLanguages() },
+        )
 
         Spacer(modifier = Modifier.height(48.dp))
 
@@ -227,6 +236,70 @@ fun CallSetupContent(
                 )
             } else {
                 Text(stringResource(R.string.start_call), fontSize = 18.sp)
+            }
+        }
+    }
+}
+
+@Composable
+private fun CallLanguageTopBar(
+    srcLang: Language?,
+    targetLang: Language?,
+    onSrcClick: () -> Unit,
+    onTargetClick: () -> Unit,
+    onSwapClick: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(12.dp))
+            .padding(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+        Column(
+            modifier = Modifier.weight(1f),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Text(
+                text = stringResource(R.string.call_my_speech_label),
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.primary,
+                fontWeight = FontWeight.SemiBold,
+            )
+            TextButton(onClick = onSrcClick, modifier = Modifier.fillMaxWidth()) {
+                Text(
+                    text = srcLang?.name ?: stringResource(R.string.choose_language),
+                    style = MaterialTheme.typography.bodyMedium,
+                    maxLines = 1,
+                )
+            }
+        }
+
+        IconButton(onClick = onSwapClick) {
+            Icon(
+                imageVector = Icons.Default.SwapHoriz,
+                contentDescription = stringResource(R.string.swap),
+                tint = MaterialTheme.colorScheme.primary,
+            )
+        }
+
+        Column(
+            modifier = Modifier.weight(1f),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Text(
+                text = stringResource(R.string.call_other_speech_label),
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.primary,
+                fontWeight = FontWeight.SemiBold,
+            )
+            TextButton(onClick = onTargetClick, modifier = Modifier.fillMaxWidth()) {
+                Text(
+                    text = targetLang?.name ?: stringResource(R.string.choose_language),
+                    style = MaterialTheme.typography.bodyMedium,
+                    maxLines = 1,
+                )
             }
         }
     }

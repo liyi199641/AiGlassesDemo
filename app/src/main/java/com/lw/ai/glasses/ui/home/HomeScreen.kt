@@ -37,6 +37,7 @@ import androidx.compose.material.icons.filled.Bluetooth
 import androidx.compose.material.icons.filled.BluetoothDisabled
 import androidx.compose.material.icons.filled.BluetoothSearching
 import androidx.compose.material.icons.filled.Bolt
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Badge
 import androidx.compose.material3.Card
@@ -69,7 +70,8 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.lw.ai.glasses.R
 import com.lw.ai.glasses.ui.base.screen.popup.CenteredFadeInPopup
-import com.polidea.rxandroidble3.scan.ScanResult
+import com.fission.wear.glasses.sdk.data.model.ScannedBleDevice
+import com.lw.ai.glasses.utils.titleRes
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -181,9 +183,9 @@ fun HomeScreen(
                 showScanningDevices = false
                 viewModel.stopScanDevice()
             },
-            onDeviceSelected = { mac, name ->
+            onDeviceSelected = { device ->
                 showScanningDevices = false
-                viewModel.connectDevice(mac, name)
+                viewModel.connectDevice(device)
             }
         )
     }
@@ -193,7 +195,7 @@ fun HomeScreen(
 private fun ScannedDevicesPopup(
     viewModel: HomeViewModel,
     onDismiss: () -> Unit,
-    onDeviceSelected: (mac: String, name: String) -> Unit,
+    onDeviceSelected: (ScannedBleDevice) -> Unit,
 ) {
     val scannedDevices by viewModel.scannedDevices.collectAsState()
 
@@ -216,11 +218,24 @@ private fun ScannedDevicesPopup(
                     .background(MaterialTheme.colorScheme.surface)
                     .padding(16.dp)
             ) {
-                Text(
-                    text = stringResource(R.string.scanned_devices),
-                    style = MaterialTheme.typography.titleMedium,
-                    modifier = Modifier.padding(bottom = 12.dp)
-                )
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = stringResource(R.string.scanned_devices),
+                        style = MaterialTheme.typography.titleMedium,
+                        modifier = Modifier.weight(1f),
+                    )
+                    IconButton(onClick = onDismiss) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = stringResource(R.string.close),
+                        )
+                    }
+                }
 
                 if (scannedDevices.isEmpty()) {
                     Box(
@@ -237,16 +252,11 @@ private fun ScannedDevicesPopup(
                     ) {
                         items(
                             items = scannedDevices,
-                            key = { result -> result.bleDevice.macAddress }
-                        ) { result ->
+                            key = { device -> device.macAddress }
+                        ) { device ->
                             ScannedDeviceItem(
-                                scanResult = result,
-                                onClick = {
-                                    onDeviceSelected(
-                                        result.bleDevice.macAddress,
-                                        result.bleDevice.name.orEmpty()
-                                    )
-                                }
+                                device = device,
+                                onClick = { onDeviceSelected(device) }
                             )
                         }
                     }
@@ -259,10 +269,12 @@ private fun ScannedDevicesPopup(
 
 @Composable
 fun ScannedDeviceItem(
-    scanResult: ScanResult,
+    device: ScannedBleDevice,
     onClick: () -> Unit
 ) {
     val unknownDevice = stringResource(R.string.unknown_device)
+    val channelLabel = device.channelType?.let { stringResource(it.titleRes()) }
+        ?: stringResource(R.string.scanned_device_channel_unknown)
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -287,18 +299,33 @@ fun ScannedDeviceItem(
             Spacer(modifier = Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = scanResult.bleDevice.name ?: unknownDevice,
+                    text = device.deviceName.ifBlank { unknownDevice },
                     style = MaterialTheme.typography.bodyLarge,
                     fontWeight = FontWeight.Bold
                 )
                 Text(
-                    text = scanResult.bleDevice.macAddress,
+                    text = device.macAddress,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+                Text(
+                    text = channelLabel,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                device.displayAdaptationNumber?.let { adaptationNumber ->
+                    Text(
+                        text = stringResource(
+                            R.string.scanned_device_adaptation,
+                            adaptationNumber
+                        ),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
             Text(
-                text = "${scanResult.rssi} dBm",
+                text = "${device.rssi} dBm",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -314,7 +341,8 @@ fun DeviceStatusCard(
     onBtReconnectClick: () -> Unit,
 ) {
     val unknownDevice = stringResource(R.string.unknown_device)
-    val showBtStatus = uiState.connectionState == ConnectionState.CONNECTED
+    val showBtStatus = uiState.showBtConnectionStatus
+            && uiState.connectionState == ConnectionState.CONNECTED
             && uiState.btConnectionState != BtConnectionState.IDLE
     Card(
         modifier = Modifier
@@ -506,7 +534,8 @@ private fun BtStatusRow(
     }
     val statusColor = when (btState) {
         BtConnectionState.CONNECTED -> MaterialTheme.colorScheme.primary
-        BtConnectionState.FAILED, BtConnectionState.DISCONNECTED -> MaterialTheme.colorScheme.error
+        BtConnectionState.FAILED,
+        BtConnectionState.DISCONNECTED -> MaterialTheme.colorScheme.error
         else -> MaterialTheme.colorScheme.onSurfaceVariant
     }
 

@@ -40,6 +40,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -65,7 +66,10 @@ fun SettingScreen(
     onNavigateBack: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsState()
-    var showInputDialog by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        viewModel.onScreenVisible()
+    }
+    var activeDurationSettingId by remember { mutableStateOf<String?>(null) }
     var showRebootConfirm by remember { mutableStateOf(false) }
     var showResetConfirm by remember { mutableStateOf(false) }
     if (showRebootConfirm) {
@@ -170,7 +174,8 @@ fun SettingScreen(
                         is SettingItem.ActionItem -> {
                             ActionSettingItem(item = item) {
                                 when (item.id) {
-                                    "record_duration" -> showInputDialog = true
+                                    "record_duration",
+                                    "audio_record_duration" -> activeDurationSettingId = item.id
                                     "reboot_device" -> showRebootConfirm = true
                                     "restore_factory" -> showResetConfirm = true
                                 }
@@ -186,12 +191,20 @@ fun SettingScreen(
                 }
             }
 
-            if (showInputDialog) {
+            activeDurationSettingId?.let { settingId ->
+                val dialogTitleRes = when (settingId) {
+                    "audio_record_duration" -> R.string.set_audio_record_duration
+                    else -> R.string.set_record_duration
+                }
                 RecordDurationInputDialog(
-                    onDismiss = { showInputDialog = false },
+                    titleRes = dialogTitleRes,
+                    onDismiss = { activeDurationSettingId = null },
                     onConfirm = { duration ->
-                        viewModel.onRecordDurationChanged(duration)
-                        showInputDialog = false
+                        when (settingId) {
+                            "audio_record_duration" -> viewModel.onAudioRecordDurationChanged(duration)
+                            else -> viewModel.onRecordDurationChanged(duration)
+                        }
+                        activeDurationSettingId = null
                     }
                 )
             }
@@ -205,13 +218,14 @@ fun SettingScreen(
 
 @Composable
 private fun RecordDurationInputDialog(
+    titleRes: Int,
     onDismiss: () -> Unit,
     onConfirm: (Int) -> Unit
 ) {
     var text by remember { mutableStateOf("") }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.set_record_duration)) },
+        title = { Text(stringResource(titleRes)) },
         text = {
             OutlinedTextField(
                 value = text,

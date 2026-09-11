@@ -1,6 +1,6 @@
 package com.lw.ai.glasses.ui.home
 
-import com.lw.ai.glasses.ui.base.viewmodel.BaseViewModel
+import BaseViewModel
 import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
@@ -19,14 +19,22 @@ import com.fission.wear.glasses.sdk.constant.GlassesConstant
 import com.fission.wear.glasses.sdk.constant.GlassesConstant.ActionSyncType
 import com.fission.wear.glasses.sdk.events.AgentEvent
 import com.fission.wear.glasses.sdk.events.CmdResultEvent
-import com.fission.wear.glasses.sdk.events.ConnectionStateEvent
 import com.fission.wear.glasses.sdk.events.ScanStateEvent
+import com.fission.wear.glasses.sdk.state.SdkBleConnectionState
+import com.fission.wear.glasses.sdk.state.SdkBtConnectionState
+import com.fission.wear.glasses.sdk.state.GlassesConnectionState
+import com.fission.wear.glasses.sdk.data.model.ScannedBleDevice
+import com.fission.wear.glasses.sdk.data.model.toHexStringUnsigned
+import com.fission.wear.glasses.sdk.util.BleAdvertisementParser
+import com.fission.wear.glasses.sdk.util.FissionLogUtils
 import com.lw.ai.glasses.R
+import com.lw.ai.glasses.config.AiDialogueLanguageDefaults
 import com.lw.ai.glasses.config.AppConfigLoader
+import com.lw.ai.glasses.config.ProductSeriesResolver
+import com.lw.ai.glasses.config.SdkChannelResolver
 import com.lw.top.lib_core.data.datastore.AppDataManager
 import com.lw.top.lib_core.data.datastore.BluetoothDataManager
 import com.polidea.rxandroidble3.scan.ScanFilter
-import com.polidea.rxandroidble3.scan.ScanResult
 import com.polidea.rxandroidble3.scan.ScanSettings
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -49,7 +57,7 @@ class HomeViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(HomeUiState())
     val uiState = _uiState.asStateFlow()
 
-    private val _scannedDevices = MutableStateFlow<List<ScanResult>>(emptyList())
+    private val _scannedDevices = MutableStateFlow<List<ScannedBleDevice>>(emptyList())
     val scannedDevices = _scannedDevices.asStateFlow()
 
     private val _permissionEvent = MutableSharedFlow<List<String>>(replay = 1)
@@ -64,15 +72,27 @@ class HomeViewModel @Inject constructor(
     private val _navigationEvent = MutableSharedFlow<String>()
     val navigationEvent = _navigationEvent.asSharedFlow()
 
+    private var isDeviceBound = false
+    /** 用户主动发起连接，在 SDK 上报 Connecting 前保持首页「连接中」。 */
+    private var pendingUserConnect = false
+    private var sawSdkConnecting = false
+
     init {
-        viewModelScope.launch {
-            bluetoothDataManager.getBluetoothName()?.let { savedName ->
-                _uiState.update { it.copy(connectedDeviceName = savedName) }
-            }
-        }
+        observeSavedDeviceBinding()
+        observeConnectionState()
+        observeSdkChannel()
         checkAndRequestPermissions()
         observeGlassesEvents()
         updateFeatures()
+    }
+
+    private fun observeSdkChannel() {
+        viewModelScope.launch {
+            val channel = SdkChannelResolver.loadForSdkInit(bluetoothDataManager, appDataManager)
+            _uiState.update {
+                it.copy(showBtConnectionStatus = channel != GlassesConstant.ChannelType.RTK)
+            }
+        }
     }
 
     fun onFeatureClick(feature: Feature) {
@@ -128,11 +148,8 @@ class HomeViewModel @Inject constructor(
         permissionsNeeded.add(Manifest.permission.ACCESS_COARSE_LOCATION)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             permissionsNeeded.add(Manifest.permission.NEARBY_WIFI_DEVICES)
+            permissionsNeeded.add(Manifest.permission.POST_NOTIFICATIONS)
         }
-        permissionsNeeded.add(Manifest.permission.ACCESS_WIFI_STATE)
-        permissionsNeeded.add(Manifest.permission.CHANGE_WIFI_STATE)
-        permissionsNeeded.add(Manifest.permission.INTERNET)
-        permissionsNeeded.add(Manifest.permission.ACCESS_NETWORK_STATE)
         return permissionsNeeded
     }
 
@@ -209,6 +226,113 @@ class HomeViewModel @Inject constructor(
         return permissions
     }
 
+    private fun observeSavedDeviceBinding() {
+        viewModelScope.launch {
+            bluetoothDataManager.savedBluetoothAddress.collect { address ->
+                isDeviceBound = !address.isNullOrBlank()
+                if (isDeviceBound) {
+                    bluetoothDataManager.getBluetoothName()?.let { savedName ->
+                        _uiState.update { it.copy(connectedDeviceName = savedName) }
+                    }
+                    syncConnectionStateFromSdk()
+                } else {
+                    _uiState.update {
+                        it.copy(
+                            connectionState = ConnectionState.IDLE,
+                            connectedDeviceName = null,
+                            batteryLevel = -1,
+                            isCharging = null,
+                            btConnectionState = BtConnectionState.IDLE,
+                            btFailureReason = null,
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    private fun observeConnectionState() {
+        viewModelScope.launch {
+            GlassesManage.connectionStateFlow().collect { sdkState ->
+                if (!isDeviceBound) return@collect
+                applySdkConnectionState(sdkState)
+            }
+        }
+    }
+
+    private fun syncConnectionStateFromSdk() {
+        if (!isDeviceBound) return
+        applySdkConnectionState(GlassesManage.currentConnectionState())
+    }
+
+    private fun applySdkConnectionState(sdkState: GlassesConnectionState) {
+        if (sdkState.bleState == SdkBleConnectionState.CONNECTING) {
+            sawSdkConnecting = true
+        }
+
+        val mappedBle = sdkState.bleState.toUiConnectionState()
+        val connectionState = when {
+            pendingUserConnect && !sawSdkConnecting &&
+                (sdkState.bleState == SdkBleConnectionState.IDLE ||
+                    sdkState.bleState == SdkBleConnectionState.DISCONNECTED) ->
+                ConnectionState.CONNECTING
+            else -> mappedBle
+        }
+
+        when (sdkState.bleState) {
+            SdkBleConnectionState.CONNECTED,
+            SdkBleConnectionState.FAILED -> {
+                pendingUserConnect = false
+                sawSdkConnecting = false
+            }
+            SdkBleConnectionState.DISCONNECTED -> {
+                if (sawSdkConnecting) {
+                    pendingUserConnect = false
+                    sawSdkConnecting = false
+                }
+            }
+            else -> Unit
+        }
+
+        val wasBleConnected = _uiState.value.connectionState == ConnectionState.CONNECTED
+        val btConnectionState = if (_uiState.value.showBtConnectionStatus) {
+            sdkState.btState.toUiBtConnectionState()
+        } else {
+            BtConnectionState.IDLE
+        }
+        _uiState.update { ui ->
+            ui.copy(
+                connectionState = connectionState,
+                btConnectionState = btConnectionState,
+                btFailureReason = if (ui.showBtConnectionStatus) sdkState.btFailureReason else null,
+                connectedDeviceName = sdkState.deviceName ?: ui.connectedDeviceName,
+            )
+        }
+        if (sdkState.isBleConnected && !wasBleConnected) {
+            refreshHomeDeviceSummary()
+        }
+        if (!sdkState.isBleConnected) {
+            _uiState.update { it.copy(batteryLevel = -1) }
+        }
+    }
+
+    private fun SdkBleConnectionState.toUiConnectionState(): ConnectionState = when (this) {
+        SdkBleConnectionState.IDLE -> if (isDeviceBound) ConnectionState.DISCONNECTED else ConnectionState.IDLE
+        SdkBleConnectionState.CONNECTING -> ConnectionState.CONNECTING
+        SdkBleConnectionState.CONNECTED -> ConnectionState.CONNECTED
+        SdkBleConnectionState.DISCONNECTED -> ConnectionState.DISCONNECTED
+        SdkBleConnectionState.FAILED -> ConnectionState.DISCONNECTED
+    }
+
+    private fun SdkBtConnectionState.toUiBtConnectionState(): BtConnectionState = when (this) {
+        SdkBtConnectionState.IDLE -> BtConnectionState.IDLE
+        SdkBtConnectionState.BONDING -> BtConnectionState.BONDING
+        SdkBtConnectionState.CONNECTING -> BtConnectionState.CONNECTING
+        SdkBtConnectionState.CONNECTED -> BtConnectionState.CONNECTED
+        SdkBtConnectionState.FAILED -> BtConnectionState.FAILED
+        SdkBtConnectionState.DISCONNECTED -> BtConnectionState.DISCONNECTED
+    }
+
     fun observeGlassesEvents() {
         viewModelScope.launch {
             AiAssistantClient.getInstance().aiAgentEventFlow().collect { event->
@@ -225,7 +349,7 @@ class HomeViewModel @Inject constructor(
             GlassesManage.eventFlow().collect { events ->
                 when (events) {
                     is ScanStateEvent.DeviceFound -> {
-                        onDeviceFound(events.data)
+                        onDeviceFound(events)
                     }
 
                     is ScanStateEvent.ScanFinished -> {
@@ -240,45 +364,11 @@ class HomeViewModel @Inject constructor(
                         }
                     }
 
-                    is ConnectionStateEvent.Connecting -> {
-                        _uiState.update {
-                            it.copy(connectionState = ConnectionState.CONNECTING)
-                        }
-                    }
-
-                    is ConnectionStateEvent.Connected -> {
-                        _uiState.update {
-                            it.copy(connectionState = ConnectionState.CONNECTED)
-                        }
-                        refreshHomeDeviceSummary()
-                    }
-
-                    is ConnectionStateEvent.Disconnected -> {
-                        _uiState.update {
-                            it.copy(
-                                connectionState = ConnectionState.DISCONNECTED,
-                                batteryLevel = -1,
-                            )
-                        }
-                    }
-
-                    is ConnectionStateEvent.Idle -> {
-                        _uiState.update {
-                            it.copy(connectionState = ConnectionState.IDLE)
-                        }
-                    }
-
-                    is ConnectionStateEvent.Failed -> {
-                        _uiState.update {
-                            it.copy(connectionState = ConnectionState.DISCONNECTED)
-                        }
-                    }
-
                     is CmdResultEvent.DevicePower -> {
                         _uiState.update {
                             it.copy(
-                                batteryLevel = events.value ?: 0,
-                                isCharging = events.isCharging
+                                batteryLevel = events.value ?: it.batteryLevel,
+                                isCharging = events.isCharging ?: it.isCharging
                             )
                         }
                     }
@@ -311,7 +401,7 @@ class HomeViewModel @Inject constructor(
     }
 
     private fun refreshHomeDeviceSummary() {
-        if (_uiState.value.connectionState != ConnectionState.CONNECTED) {
+        if (!GlassesManage.currentConnectionState().isBleConnected) {
             return
         }
         GlassesManage.getBatteryLevel()
@@ -319,11 +409,31 @@ class HomeViewModel @Inject constructor(
         GlassesManage.setVoiceWakeUp(localOfflineEnabled = true, opusPushEnabled = true)
     }
 
-    private suspend fun initGlassesSdkAndAiClient() {
+    private suspend fun initGlassesSdkAndAiClient(
+        deviceName: String? = null,
+        channelType: GlassesConstant.ChannelType? = null,
+    ) {
         val snapshot = AppConfigLoader.loadSnapshot(appDataManager)
-        GlassesManage.initialize(
-            SdkConfig(true, context, snapshot.selectedChannel, LogUtils.V),
+        val resolvedName = deviceName
+            ?: bluetoothDataManager.getBluetoothName()
+        val productSeries = ProductSeriesResolver.fromDeviceName(resolvedName)
+        val channel = channelType ?: SdkChannelResolver.loadForSdkInit(bluetoothDataManager, appDataManager)
+        LogUtils.i(
+            "HomeViewModel",
+            "init SDK channel=${channel.name} productSeries=${productSeries.code} deviceName=$resolvedName"
         )
+        GlassesManage.initialize(
+            SdkConfig(
+                true,
+                context,
+                channel,
+                LogUtils.V,
+                productSeries = productSeries,
+            ),
+        )
+        _uiState.update {
+            it.copy(showBtConnectionStatus = channel != GlassesConstant.ChannelType.RTK)
+        }
         val localConfig = AppConfigLoader.localCustomEnvironment(snapshot)
         if (localConfig != null) {
             AiAssistantClient.getInstance().applyServerEnvironmentToGlobals(localConfig)
@@ -333,42 +443,32 @@ class HomeViewModel @Inject constructor(
         AiAssistantClient.getInstance().initializeAiClient(
             AiAgentConfig(
                 context = context,
-                channel = snapshot.selectedChannel,
+                channel = channel,
                 aiModelType = GlassesConstant.AiModelVendor.DEFAULT,
                 serverEnvironment = snapshot.selectedEnvironment,
                 customServerEnvironment = localConfig,
                 enableDefaultPlaySimultaneousAudio = false,
+                aiDialogueLanguage = AiDialogueLanguageDefaults.defaultLangType(),
             ),
         )
     }
 
-    private fun isTargetGlassesDevice(name: String): Boolean {
-        return name.contains("Glass", ignoreCase = true)
-            || name.contains("AG66", ignoreCase = true)
-            || name.contains("AG19", ignoreCase = true)
-            || name.contains("Tesee", ignoreCase = true)
-            || name.contains("AG188", ignoreCase = true)
-            || name.contains("Xinmo G1", ignoreCase = true)
-    }
+    private fun onDeviceFound(result: ScanStateEvent.DeviceFound) {
+//        FissionLogUtils.d("${result.data.bleDevice.name} - ${result.data.bleDevice.macAddress} - ${result.data.scanRecord.bytes.toHexStringUnsigned()}")
+        val parsed = BleAdvertisementParser.parse(result.data) ?: return
+        if (!parsed.isListDisplayable) return
 
-    private fun onDeviceFound(result: ScanResult) {
-        val name = result.bleDevice.name ?: return
-        if (!isTargetGlassesDevice(name)) return
-
-        val mac = result.bleDevice.macAddress
+        val mac = parsed.macAddress
         val current = _scannedDevices.value
-        val existing = current.find { it.bleDevice.macAddress == mac }
-        if (existing != null && abs(existing.rssi - result.rssi) < 5) return
+        val existing = current.find { it.macAddress == mac }
+        if (existing != null && abs(existing.rssi - parsed.rssi) < 5) return
 
-        _scannedDevices.value = (current.filter { it.bleDevice.macAddress != mac } + result)
+        _scannedDevices.value = (current.filter { it.macAddress != mac } + parsed)
             .sortedByDescending { it.rssi }
     }
 
     fun startScanDevice() {
-        viewModelScope.launch {
-            initGlassesSdkAndAiClient()
-            startScanDeviceInternal()
-        }
+        startScanDeviceInternal()
     }
 
     private fun startScanDeviceInternal() {
@@ -376,10 +476,11 @@ class HomeViewModel @Inject constructor(
         _scannedDevices.value = emptyList()
         _uiState.update { it.copy(isScanning = true) }
         GlassesManage.startScanBleDevices(
+            context = context,
             bleScanConfig = BleScanConfig(isContinuousScan = false, scanDuration = 120000),
             scanSettings = ScanSettings.Builder()
-                .setScanMode(ScanSettings.SCAN_MODE_BALANCED)
-                .setCallbackType(ScanSettings.CALLBACK_TYPE_FIRST_MATCH)
+                .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
+                .setCallbackType(ScanSettings.CALLBACK_TYPE_ALL_MATCHES)
                 .build(),
             scanFilters = arrayOf(ScanFilter.Builder().build())
         )
@@ -390,35 +491,104 @@ class HomeViewModel @Inject constructor(
         _uiState.update { it.copy(isScanning = false) }
     }
 
-    fun connectDevice(mac: String, name: String) {
+    fun connectDevice(device: ScannedBleDevice) {
+        val channel = device.channelType
+        if (device.macAddress.isNotEmpty() && channel == null) {
+            ToastUtils.showLong(context.getString(R.string.scanned_device_channel_unrecognized))
+            return
+        }
+        if (device.macAddress.isNotEmpty()) {
+            markConnecting(device.deviceName)
+        }
         viewModelScope.launch {
-            initGlassesSdkAndAiClient()
-            connectDeviceInternal(mac, name)
+            if (device.macAddress.isEmpty()) {
+                markReconnectingIfNeeded()
+            }
+            val deviceName = device.deviceName.ifBlank { bluetoothDataManager.getBluetoothName() }
+            initGlassesSdkAndAiClient(deviceName, channel)
+            connectDeviceInternal(device)
         }
     }
 
-    private suspend fun connectDeviceInternal(mac: String, name: String) {
+    fun connectDevice(mac: String, name: String) {
+        connectDevice(
+            ScannedBleDevice(
+                macAddress = mac,
+                deviceName = name,
+                channelType = null,
+                adaptationNumber = "",
+                rssi = 0,
+            )
+        )
+    }
+
+    private fun markConnecting(deviceName: String) {
+        isDeviceBound = true
+        pendingUserConnect = true
+        sawSdkConnecting = false
+        _uiState.update {
+            it.copy(
+                connectionState = ConnectionState.CONNECTING,
+                connectedDeviceName = deviceName.ifEmpty { it.connectedDeviceName },
+            )
+        }
+    }
+
+    private suspend fun markReconnectingIfNeeded() {
+        val address = bluetoothDataManager.getBluetoothAddress()
+        if (address.isNullOrBlank()) return
+        isDeviceBound = true
+        pendingUserConnect = true
+        sawSdkConnecting = false
+        _uiState.update {
+            it.copy(
+                connectionState = ConnectionState.CONNECTING,
+                connectedDeviceName = bluetoothDataManager.getBluetoothName() ?: it.connectedDeviceName,
+            )
+        }
+    }
+
+    private suspend fun connectDeviceInternal(device: ScannedBleDevice) {
         stopScanDevice()
-        if (mac.isEmpty()) {
+        if (device.macAddress.isEmpty()) {
             if (!bluetoothDataManager.getBluetoothAddress().isNullOrEmpty()) {
                 connectDeviceInternal(
-                    bluetoothDataManager.getBluetoothAddress()!!,
-                    bluetoothDataManager.getBluetoothName()!!,
+                    ScannedBleDevice(
+                        macAddress = bluetoothDataManager.getBluetoothAddress()!!,
+                        deviceName = bluetoothDataManager.getBluetoothName()!!,
+                        channelType = null,
+                        adaptationNumber = "",
+                        rssi = 0,
+                    )
                 )
             }
             return
         }
-        GlassesManage.connect(BleComConfig(context, mac, false))
-        bluetoothDataManager.saveBluetoothDevice(mac, name)
+        GlassesManage.connect(
+            BleComConfig(
+                context = context,
+                mac = device.macAddress,
+                isOtaMode = device.isOtaMode,
+                deviceName = device.deviceName,
+                adaptationNumber = device.adaptationNumber.takeIf { it.isNotBlank() },
+            )
+        )
+        bluetoothDataManager.saveBluetoothDevice(
+            address = device.macAddress,
+            name = device.deviceName,
+            sdkChannel = device.channelType?.name,
+        )
         _uiState.update {
             it.copy(
-                connectedDeviceName = name.ifEmpty { bluetoothDataManager.getBluetoothName()!! },
+                connectedDeviceName = device.deviceName.ifEmpty {
+                    bluetoothDataManager.getBluetoothName()!!
+                },
             )
         }
     }
 
     fun reconnectBt() {
-        if (_uiState.value.connectionState != ConnectionState.CONNECTED) {
+        if (!GlassesManage.currentConnectionState().isBleConnected) {
             ToastUtils.showShort(context.getString(R.string.bt_reconnect_ble_required))
             return
         }

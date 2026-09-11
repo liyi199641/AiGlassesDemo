@@ -1,7 +1,6 @@
-package com.lw.ai.glasses.ui.base.data
+
 import androidx.annotation.DrawableRes
 import androidx.compose.ui.graphics.Color
-import com.lw.ai.glasses.ui.theme.CardBackground
 
 enum class AppItemType {
     SECURITY_CENTER,

@@ -112,3 +112,8 @@ Android SDK V1.1.8
 6.新增唤起设备AI录音API
 7.修复已知bug
 8.补全readme文档
+
+V2.0.0
+1.LY新增直播预览功能
+2.修复GATT连接异常问题
+3.接入RTK/TB方案

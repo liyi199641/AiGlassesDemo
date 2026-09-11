@@ -4,6 +4,7 @@ import android.content.Context
 import com.fission.wear.glasses.sdk.AiAssistantClient
 import com.fission.wear.glasses.sdk.config.AiAgentConfig
 import com.fission.wear.glasses.sdk.constant.GlassesConstant
+import com.lw.ai.glasses.config.AiDialogueLanguageDefaults
 import com.lw.top.lib_core.data.datastore.AppDataManager
 import com.lw.top.lib_core.data.datastore.BluetoothDataManager
 
@@ -21,20 +22,29 @@ object AiAssistantConnectionHelper {
         AiAssistantClient.getInstance().connectAiAssistant(
             address,
             name,
-            "6600",
+            "18800",
             "ukuSPzMnpLvLS2TTLL9S8PvUJzfTCHnu",
             "tz5dgRLm6tXS8gRr",
         )
     }
 
 
-    suspend fun disconnect(context: Context, appDataManager: AppDataManager) {
+    suspend fun disconnect(
+        context: Context,
+        appDataManager: AppDataManager,
+        bluetoothDataManager: BluetoothDataManager,
+    ) {
         AiAssistantClient.getInstance().disconnect()
-        initializeAiClient(context, appDataManager)
+        initializeAiClient(context, appDataManager, bluetoothDataManager)
     }
 
-    suspend fun initializeAiClient(context: Context, appDataManager: AppDataManager) {
+    suspend fun initializeAiClient(
+        context: Context,
+        appDataManager: AppDataManager,
+        bluetoothDataManager: BluetoothDataManager,
+    ) {
         val snapshot = AppConfigLoader.loadSnapshot(appDataManager)
+        val channel = SdkChannelResolver.loadForSdkInit(bluetoothDataManager, appDataManager)
         val localConfig = AppConfigLoader.localCustomEnvironment(snapshot)
         if (localConfig != null) {
             AiAssistantClient.getInstance().applyServerEnvironmentToGlobals(localConfig)
@@ -44,11 +54,12 @@ object AiAssistantConnectionHelper {
         AiAssistantClient.getInstance().initializeAiClient(
             AiAgentConfig(
                 context = context,
-                channel = snapshot.selectedChannel,
+                channel = channel,
                 aiModelType = GlassesConstant.AiModelVendor.DEFAULT,
                 serverEnvironment = snapshot.selectedEnvironment,
                 customServerEnvironment = localConfig,
                 enableDefaultPlaySimultaneousAudio = false,
+                aiDialogueLanguage = AiDialogueLanguageDefaults.defaultLangType(),
             ),
         )
     }

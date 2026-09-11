@@ -10,31 +10,18 @@ object AppConfigLoader {
         val selectedEnvironment: GlassesConstant.ServerEnvironment,
         val localEnvironmentBaseUrl: String,
         val localEnvironmentWsUrl: String,
-        val selectedChannel: GlassesConstant.ChannelType,
         val autoConnectAi: Boolean,
     )
 
-    fun sanitizeSelectableEnvironment(env: GlassesConstant.ServerEnvironment): GlassesConstant.ServerEnvironment {
-        return if (GlassesConstant.isVendorDirectEnvironment(env)) {
-            GlassesConstant.ServerEnvironment.DEV
-        } else {
-            env
-        }
-    }
-
     suspend fun loadSnapshot(appDataManager: AppDataManager): Snapshot {
         val localBaseUrl = appDataManager.getLocalEnvironmentBaseUrl()
-            ?: GlassesConstant.ServerEnvironment.LOCAL.baseUrl
+            ?: GlassesConstant.ServerEnvironment.CUSTOM.baseUrl
         val localWsUrl = appDataManager.getLocalEnvironmentWsUrl()
-            ?: GlassesConstant.ServerEnvironment.LOCAL.wsUrl
+            ?: GlassesConstant.ServerEnvironment.CUSTOM.wsUrl
         val savedEnv = appDataManager.getEnvironment()
-            ?.let { name ->
-                runCatching { GlassesConstant.ServerEnvironment.valueOf(name) }.getOrNull()
-                    ?.let(::sanitizeSelectableEnvironment)
-            }
+            ?.let(GlassesConstant.ServerEnvironment::fromPersistedName)
             ?: GlassesConstant.ServerEnvironment.entries.firstOrNull {
-                it.wsUrl == GlassesConstant.AI_ASSISTANT_BASE_WS_URL &&
-                    !GlassesConstant.isVendorDirectEnvironment(it)
+                it.wsUrl == GlassesConstant.AI_ASSISTANT_BASE_WS_URL
             }
             ?: GlassesConstant.ServerEnvironment.DEV
 
@@ -42,13 +29,12 @@ object AppConfigLoader {
             selectedEnvironment = savedEnv,
             localEnvironmentBaseUrl = localBaseUrl,
             localEnvironmentWsUrl = localWsUrl,
-            selectedChannel = SdkChannelResolver.loadSaved(appDataManager),
             autoConnectAi = appDataManager.getAutoConnectAiEnabled(),
         )
     }
 
     fun localCustomEnvironment(snapshot: Snapshot): AiServerEnvironmentConfig? {
-        return if (snapshot.selectedEnvironment == GlassesConstant.ServerEnvironment.LOCAL) {
+        return if (snapshot.selectedEnvironment == GlassesConstant.ServerEnvironment.CUSTOM) {
             AiServerEnvironmentConfig(
                 baseUrl = snapshot.localEnvironmentBaseUrl,
                 wsUrl = snapshot.localEnvironmentWsUrl,

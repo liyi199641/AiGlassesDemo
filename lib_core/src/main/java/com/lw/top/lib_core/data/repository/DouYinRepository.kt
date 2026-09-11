@@ -19,6 +19,7 @@ import com.bytedance.android.openlive.broadcast.api.model.StartLiveResp
 import com.bytedance.sdk.open.aweme.authorize.model.Authorization
 import com.bytedance.sdk.open.douyin.DouYinOpenApiFactory
 import com.bytedance.sdk.open.douyin.api.DouYinOpenApi
+import com.lw.top.lib_core.BuildConfig
 import com.lw.top.lib_core.data.repository.base.BaseRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -39,7 +40,13 @@ class DouYinRepository @Inject constructor(
         }
         douYinOpenApi = DouYinOpenApiFactory.create(activity)
         val config =
-            BroadcastInitConfig.Builder(application, "843349", "FunSeek", "1.0.0", 1)
+            BroadcastInitConfig.Builder(
+                application,
+                BuildConfig.DOUYIN_APP_ID,
+                BuildConfig.DOUYIN_APP_NAME,
+                "1.0.0",
+                1
+            )
                     .privacyConfig(
                         BroadcastPrivacyConfig.Builder()
                                 .isCanUseMac(false)

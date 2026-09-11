@@ -8,6 +8,7 @@ import com.lw.ai.glasses.R
 import com.lw.ai.glasses.ui.common.WsConnectionUiState
 import com.lw.ai.glasses.ui.common.applyAgentEvent
 import com.lw.ai.glasses.ui.common.clearedForManualReconnect
+import com.lw.top.lib_core.data.datastore.AppDataManager
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.util.concurrent.atomic.AtomicBoolean
 import javax.inject.Inject
@@ -27,6 +28,7 @@ import kotlinx.coroutines.launch
 @Singleton
 class WsConnectionStateManager @Inject constructor(
     @ApplicationContext private val context: Context,
+    private val appDataManager: AppDataManager,
 ) {
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val started = AtomicBoolean(false)
@@ -36,6 +38,30 @@ class WsConnectionStateManager @Inject constructor(
 
     fun start() {
         if (!started.compareAndSet(false, true)) return
+        observeAutoConnectSetting()
+        observeAgentEvents()
+    }
+
+    fun manualReconnect() {
+        appScope.launch {
+            if (!appDataManager.getAutoConnectAiEnabled()) {
+                ToastUtils.showLong(context.getString(R.string.ws_auto_connect_ai_disabled_hint))
+                return@launch
+            }
+            _state.update { it.clearedForManualReconnect() }
+            AiAssistantClient.getInstance().manualReconnect()
+        }
+    }
+
+    private fun observeAutoConnectSetting() {
+        appScope.launch {
+            appDataManager.observeAutoConnectAiEnabled().collect { enabled ->
+                _state.update { it.copy(autoConnectAiEnabled = enabled) }
+            }
+        }
+    }
+
+    private fun observeAgentEvents() {
         appScope.launch {
             AiAssistantClient.getInstance().aiAgentEventFlow().collect { event ->
                 val agentEvent = when {
@@ -49,14 +75,15 @@ class WsConnectionStateManager @Inject constructor(
                     _state.value = next
                 }
                 if (agentEvent == AgentEvent.ReconnectRequired) {
-                    ToastUtils.showLong(context.getString(R.string.ws_status_reconnect_required))
+                    appScope.launch {
+                        if (!appDataManager.getAutoConnectAiEnabled()) {
+                            ToastUtils.showLong(context.getString(R.string.ws_auto_connect_ai_disabled_hint))
+                        } else {
+                            ToastUtils.showLong(context.getString(R.string.ws_status_reconnect_required))
+                        }
+                    }
                 }
             }
         }
-    }
-
-    fun manualReconnect() {
-        _state.update { it.clearedForManualReconnect() }
-        AiAssistantClient.getInstance().manualReconnect()
     }
 }

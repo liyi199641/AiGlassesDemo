@@ -1,6 +1,8 @@
 package com.lw.ai.glasses.ui.devicecontrol
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
@@ -35,12 +37,16 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
-import com.fission.wear.glasses.sdk.constant.LyCmdConstant
 import com.lw.ai.glasses.R
+import android.graphics.BitmapFactory
+import com.fission.wear.glasses.sdk.constant.GlassesConstant
+import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -179,15 +185,7 @@ fun DeviceControlScreen(
                         secondaryText = stringResource(R.string.take_picture_to_device),
                         onSecondaryClick = viewModel::takePictureToDevice
                     )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    ControlButtonRow(
-                        primaryText = stringResource(R.string.start_ai),
-                        onPrimaryClick = viewModel::startAiAssistant,
-                        secondaryText = stringResource(R.string.stop_ai),
-                        onSecondaryClick = viewModel::stopAiAssistant
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    FullWidthButton(text = stringResource(R.string.interrupt_ai_chat), onClick = viewModel::interruptAiAssistant)
+                    AiPhotoBleResultSection(result = uiState.aiPhotoBleResult)
                 }
             }
             item {
@@ -238,6 +236,93 @@ fun DeviceControlScreen(
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun AiPhotoBleResultSection(result: AiPhotoBleResult) {
+    if (result.status == AiPhotoBleStatus.Idle) return
+
+    Spacer(modifier = Modifier.height(12.dp))
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text(
+            text = stringResource(R.string.ai_photo_ble_result_title),
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.SemiBold,
+        )
+        Text(
+            text = stringResource(
+                when (result.status) {
+                    AiPhotoBleStatus.Waiting -> R.string.ai_photo_ble_status_waiting
+                    AiPhotoBleStatus.Transferring -> R.string.ai_photo_ble_status_transferring
+                    AiPhotoBleStatus.Success -> R.string.ai_photo_ble_status_success
+                    AiPhotoBleStatus.Failed -> R.string.ai_photo_ble_status_failed
+                    AiPhotoBleStatus.Idle -> R.string.ai_photo_ble_status_waiting
+                }
+            ),
+            style = MaterialTheme.typography.bodyMedium,
+            color = when (result.status) {
+                AiPhotoBleStatus.Success -> MaterialTheme.colorScheme.primary
+                AiPhotoBleStatus.Failed -> MaterialTheme.colorScheme.error
+                else -> MaterialTheme.colorScheme.onSurfaceVariant
+            },
+        )
+        result.imageBytesSize?.let { size ->
+            Text(
+                text = stringResource(R.string.ai_photo_ble_size, formatBytes(size)),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        result.imageFilePath?.let { path ->
+            Text(
+                text = stringResource(R.string.ai_photo_ble_file_path, path),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        result.errorMessage?.let { message ->
+            Text(
+                text = message,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
+            )
+        }
+        result.aiRecognitionWarning?.let { warning ->
+            Text(
+                text = stringResource(R.string.ai_photo_ble_ai_warning, warning),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.tertiary,
+            )
+        }
+        result.imageFilePath?.let { path ->
+            val bitmap = remember(path) { BitmapFactory.decodeFile(path)?.asImageBitmap() }
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(180.dp),
+            ) {
+                if (bitmap != null) {
+                    Image(
+                        bitmap = bitmap,
+                        contentDescription = stringResource(R.string.ai_photo_ble_preview),
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Fit,
+                    )
+                }
+            }
+        }
+    }
+}
+
+private fun formatBytes(bytes: Int): String {
+    return when {
+        bytes >= 1024 * 1024 -> "${(bytes / (1024f * 1024f)).roundToInt()} MB"
+        bytes >= 1024 -> "${(bytes / 1024f).roundToInt()} KB"
+        else -> "$bytes B"
     }
 }
 
@@ -322,19 +407,19 @@ private fun VolumeControlCard(
             title = stringResource(R.string.system_volume),
             maxVolume = 15,
             currentVolume = systemVolume,
-            onVolumeSelected = { viewModel.setVolume(LyCmdConstant.AudioVolumeType.SYSTEM, it) }
+            onVolumeSelected = { viewModel.setVolume(GlassesConstant.AudioVolumeType.SYSTEM, it) }
         )
         VolumeSlider(
             title = stringResource(R.string.media_volume),
             maxVolume = 16,
             currentVolume = mediaVolume,
-            onVolumeSelected = { viewModel.setVolume(LyCmdConstant.AudioVolumeType.MEDIA, it) }
+            onVolumeSelected = { viewModel.setVolume(GlassesConstant.AudioVolumeType.MEDIA, it) }
         )
         VolumeSlider(
             title = stringResource(R.string.call_volume),
             maxVolume = 15,
             currentVolume = callVolume,
-            onVolumeSelected = { viewModel.setVolume(LyCmdConstant.AudioVolumeType.CALL, it) }
+            onVolumeSelected = { viewModel.setVolume(GlassesConstant.AudioVolumeType.CALL, it) }
         )
     }
 }

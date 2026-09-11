@@ -96,6 +96,10 @@ class AppDataManager @Inject constructor(
         }.firstOrNull() ?: DEFAULT_AUTO_CONNECT_AI
     }
 
+    fun observeAutoConnectAiEnabled(): Flow<Boolean> = dataStore.data.map { preferences ->
+        preferences[AppKeys.AUTO_CONNECT_AI] ?: DEFAULT_AUTO_CONNECT_AI
+    }
+
     suspend fun saveAutoConnectAiEnabled(enabled: Boolean) {
         dataStore.edit { preferences ->
             preferences[AppKeys.AUTO_CONNECT_AI] = enabled

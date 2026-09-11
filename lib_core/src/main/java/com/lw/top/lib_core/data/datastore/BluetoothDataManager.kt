@@ -20,6 +20,7 @@ class BluetoothDataManager @Inject constructor(
         val BLUETOOTH_ADDRESS = stringPreferencesKey("bluetooth_address")
         val BLUETOOTH_NAME = stringPreferencesKey("bluetooth_name")
         val BLUETOOTH_STATE = intPreferencesKey("bluetooth_state")
+        val SDK_CHANNEL = stringPreferencesKey("bluetooth_sdk_channel")
     }
 
     val savedBluetoothAddress: Flow<String?> = dataStore.data.map { preferences ->
@@ -46,13 +47,20 @@ class BluetoothDataManager @Inject constructor(
     }
 
     /**
-     * 保存蓝牙设备的地址和名称。
+     * 保存蓝牙设备的地址、名称及广播解析出的 SDK 渠道。
      */
-    suspend fun saveBluetoothDevice(address: String, name: String) {
+    suspend fun saveBluetoothDevice(address: String, name: String, sdkChannel: String? = null) {
         dataStore.edit { preferences ->
             preferences[BluetoothKeys.BLUETOOTH_ADDRESS] = address
             preferences[BluetoothKeys.BLUETOOTH_NAME] = name
+            if (!sdkChannel.isNullOrBlank()) {
+                preferences[BluetoothKeys.SDK_CHANNEL] = sdkChannel
+            }
         }
+    }
+
+    suspend fun getSdkChannelName(): String? {
+        return dataStore.data.map { it[BluetoothKeys.SDK_CHANNEL] }.firstOrNull()
     }
 
     suspend fun saveBluetoothState(state: Int) {
@@ -68,6 +76,7 @@ class BluetoothDataManager @Inject constructor(
         dataStore.edit { preferences ->
             preferences.remove(BluetoothKeys.BLUETOOTH_ADDRESS)
             preferences.remove(BluetoothKeys.BLUETOOTH_NAME)
+            preferences.remove(BluetoothKeys.SDK_CHANNEL)
             preferences[BluetoothKeys.BLUETOOTH_STATE] = 0
         }
     }

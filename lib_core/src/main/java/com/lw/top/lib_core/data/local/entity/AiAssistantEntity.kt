@@ -12,5 +12,7 @@ data class AiAssistantEntity(
     val answer: String,
     val questionType: String,
     val answerType: String,
+    val answerAudioPath: String? = null,
+    val messageId: String? = null,
     val timestamp: Long = System.currentTimeMillis()
 )

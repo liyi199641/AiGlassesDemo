@@ -1,13 +1,18 @@
 package com.lw.ai.glasses.ui.call
 
 import com.lw.ai.glasses.ui.common.WsConnectionUiState
+import com.lw.ai.glasses.ui.translate.Language
 
 data class CallUiState(
     val isInCall: Boolean = false,
     /** 创建房间成功后由服务端返回，用于系统分享邀请对方加入 */
     val hostUrl: String? = null,
     val callMode: CallMode = CallMode.VIDEO,
-    val selectedLanguage: String = "en",
+    val allLanguages: List<Language> = emptyList(),
+    /** 我方语种，对应 getVoiceRoomParams 的 language */
+    val srcLang: Language? = null,
+    /** 对方语种，对应 getVoiceRoomParams 的 targetLanguage */
+    val targetLang: Language? = null,
     val translationLogs: List<TranslationMessage> = emptyList(),
     val isRemoteVideoReady: Boolean = false,
     /** 双方已接通（收到 CallConnected） */

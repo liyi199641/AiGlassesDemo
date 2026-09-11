@@ -1,6 +1,6 @@
 [versions]
-agp = "8.11.1"
-kotlin = "2.1.21"
+agp = "8.13.1"
+kotlin = "2.2.0"
 coreKtx = "1.16.0"
 junit = "4.13.2"
 junitVersion = "1.2.1"
@@ -12,7 +12,7 @@ appcompat = "1.7.1"
 material = "1.12.0"
 hilt = "2.56.2"
 hiltNavigationCompose = "1.2.0"
-ksp = "2.1.21-2.0.1"
+ksp = "2.2.0-2.0.2"
 coreSplashscreen = "1.0.1"
 okhttp = "5.0.0-alpha.16"
 retrofit = "3.0.0"
@@ -28,7 +28,9 @@ desugarJdkLibs = "2.0.4"
 rxjava3 = "3.1.6"
 rxandroid = "3.0.0"
 rxandroidble = "1.19.1"
-glasses="1.1.8"
+glasses="2.0.0"
+glassesTb="2.0.0"
+playServicesVisionCommon = "19.1.3"
 media3 = "1.3.1"
 preference = "1.2.1"
 libvlc = "3.6.5"
@@ -63,6 +65,7 @@ androidx-compose-animation = { group = "androidx.compose.animation", name = "ani
 androidx-datastore-preferences={group="androidx.datastore",name="datastore-preferences",version.ref="preferences"}
 androidx-media3-common = { group = "androidx.media3", name = "media3-common", version.ref = "media3" }
 androidx-media3-exoplayer = { group = "androidx.media3", name = "media3-exoplayer", version.ref = "media3" }
+androidx-media3-exoplayer-rtsp = { group = "androidx.media3", name = "media3-exoplayer-rtsp", version.ref = "media3" }
 androidx-media3-ui = { group = "androidx.media3", name = "media3-ui", version.ref = "media3" }
 androidx-preference = { group = "androidx.preference", name = "preference-ktx", version.ref = "preference" }
 
@@ -105,8 +108,12 @@ rxjava3 = { group = "io.reactivex.rxjava3", name = "rxjava", version.ref = "rxja
 rxandroid = { group = "io.reactivex.rxjava3", name = "rxandroid", version.ref = "rxandroid" }
 rxandroidble = { group = "com.polidea.rxandroidble3", name = "rxandroidble", version.ref = "rxandroidble" }
 
-#glasses
-glasses-sdk = { group = "com.fission.wear.glasses", name = "sdk", version.ref = "glasses" }
+#glasses SDK 2.0+
+glasses-sdk-core = { group = "com.fission.wear.glasses", name = "sdk-core", version.ref = "glasses" }
+glasses-sdk-ly = { group = "com.fission.wear.glasses", name = "sdk-ly", version.ref = "glasses" }
+glasses-sdk-rtk = { group = "com.fission.wear.glasses", name = "sdk-rtk", version.ref = "glasses" }
+glasses-sdk-tb = { group = "com.fission.wear.glasses", name = "sdk-tb", version.ref = "glassesTb" }
+play-services-vision-common = { group = "com.google.android.gms", name = "play-services-vision-common", version.ref = "playServicesVisionCommon" }
 
 #live
 libvlc = { group = "org.videolan.android", name = "libvlc-all", version.ref = "libvlc" }
@@ -126,4 +133,4 @@ kotlin-parcelize = { id = "org.jetbrains.kotlin.plugin.parcelize" }
 
 [bundles]
 coil = ["coil-compose", "coil-network-okhttp","coil-video"]
-media3 = ["androidx-media3-common", "androidx-media3-exoplayer", "androidx-media3-ui"]
+media3 = ["androidx-media3-common", "androidx-media3-exoplayer", "androidx-media3-exoplayer-rtsp", "androidx-media3-ui"]

@@ -24,7 +24,8 @@ class LinWearApplication : Application(){
 
         Utils.init(this)
 
-        val logDirPath = filesDir.absolutePath
+        val logDirPath = externalCacheDir?.absolutePath
+                         ?: cacheDir.absolutePath
 
         LogUtils.getConfig().apply {
             setConsoleSwitch(true)

@@ -21,6 +21,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.FolderZip
 import androidx.compose.material.icons.filled.NoteAdd
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -32,11 +33,13 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -50,6 +53,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.fission.wear.glasses.sdk.constant.GlassesConstant
+import com.fission.wear.glasses.sdk.data.dto.DeviceVersionInfoDTO
 import com.lw.ai.glasses.R
 import com.lw.ai.glasses.utils.titleRes
 
@@ -62,9 +66,19 @@ fun UpdateScreen(
     val uiState by viewModel.uiState.collectAsState()
     val context = LocalContext.current
 
+    LaunchedEffect(Unit) {
+        viewModel.onScreenVisible()
+    }
+
     val filePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent(),
         onResult = { uri -> viewModel.onFileAdded(uri, context) }
+    )
+
+    // RTK WiFi 升级：压缩包选择器
+    val wifiZipPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent(),
+        onResult = { uri -> viewModel.onWifiZipAdded(uri, context) }
     )
 
     Scaffold(
@@ -82,8 +96,22 @@ fun UpdateScreen(
             )
         },
         floatingActionButton = {
-            FloatingActionButton(onClick = { filePickerLauncher.launch("*/*") }) {
-                Icon(Icons.Default.Add, contentDescription = stringResource(R.string.add_firmware))
+            Column(
+                horizontalAlignment = Alignment.End,
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                if (uiState.isRtk) {
+                    // RTK：WiFi 升级包选择压缩包
+                    FloatingActionButton(onClick = { wifiZipPickerLauncher.launch("application/zip") }) {
+                        Icon(
+                            Icons.Default.FolderZip,
+                            contentDescription = stringResource(R.string.add_firmware_zip)
+                        )
+                    }
+                }
+                FloatingActionButton(onClick = { filePickerLauncher.launch("*/*") }) {
+                    Icon(Icons.Default.Add, contentDescription = stringResource(R.string.add_firmware))
+                }
             }
         }
     ) { paddingValues ->
@@ -93,6 +121,10 @@ fun UpdateScreen(
                 .padding(paddingValues)
                 .padding(horizontal = 16.dp)
         ) {
+            CurrentDeviceVersionCard(versionInfo = uiState.deviceVersionInfo)
+
+            Spacer(Modifier.height(16.dp))
+
             // 状态和进度区域
             StatusCard(
                 statusText = uiState.statusText,
@@ -111,32 +143,48 @@ fun UpdateScreen(
             ) {
                 if (uiState.recentFiles.isEmpty()) {
                     item {
-                        EmptyState()
+                        EmptyState(isRtk = uiState.isRtk)
                     }
                 } else {
                     items(uiState.recentFiles, key = { it.id }) { file ->
                         FirmwareFileItem(
                             file = file,
-                            isSelected = file.id == uiState.selectedFileId,
+                            isSelected = if (file.isWifiZip) file.id == uiState.selectedWifiZipId
+                            else file.id == uiState.selectedFileId,
                             onClick = { viewModel.onFileSelectionChanged(file.id) }
                         )
                     }
                 }
             }
 
-            OtaTypeSelection(
-                availableTypes = uiState.availableOtaTypes,
-                selectedType = uiState.selectedOtaType,
-                onTypeSelected = { viewModel.onOtaTypeChanged(it) }
+            // RTK 方案 BT+WiFi 组合升级，无需选择升级类型
+            if (!uiState.isRtk) {
+                OtaTypeSelection(
+                    availableTypes = uiState.availableOtaTypes,
+                    selectedType = uiState.selectedOtaType,
+                    onTypeSelected = { viewModel.onOtaTypeChanged(it) }
+                )
+                Spacer(Modifier.height(12.dp))
+            }
+
+            FirmwareVersionField(
+                version = uiState.firmwareVersion,
+                enabled = uiState.otaStatus != OtaStatus.UPGRADING,
+                onVersionChange = { viewModel.onFirmwareVersionChanged(it) }
             )
 
             Spacer(Modifier.height(16.dp))
+            val upgradeEnabled = if (uiState.isRtk) {
+                uiState.selectedFileId != null || uiState.selectedWifiZipId != null
+            } else {
+                uiState.selectedFileId != null
+            }
             Button(
                 onClick = { viewModel.startOtaUpgrade() },
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(bottom = 16.dp),
-                enabled = uiState.selectedFileId != null && uiState.otaStatus != OtaStatus.UPGRADING
+                enabled = upgradeEnabled && uiState.otaStatus != OtaStatus.UPGRADING
             ) {
                 Text(
                     if (uiState.otaStatus == OtaStatus.UPGRADING) {
@@ -148,6 +196,61 @@ fun UpdateScreen(
             }
         }
 
+    }
+}
+
+@Composable
+private fun CurrentDeviceVersionCard(versionInfo: DeviceVersionInfoDTO?) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text(
+                stringResource(R.string.ota_current_version),
+                style = MaterialTheme.typography.titleMedium
+            )
+            Spacer(Modifier.height(8.dp))
+            if (versionInfo == null) {
+                Text(
+                    text = stringResource(R.string.loading),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = LocalContentColor.current.copy(alpha = 0.7f)
+                )
+            } else {
+                VersionInfoRow(
+                    label = stringResource(R.string.firmware_version),
+                    value = versionInfo.firmwareVersion
+                )
+                Spacer(Modifier.height(4.dp))
+                VersionInfoRow(
+                    label = stringResource(R.string.wifi_version),
+                    value = versionInfo.wifiVersion
+                )
+                Spacer(Modifier.height(4.dp))
+                VersionInfoRow(
+                    label = stringResource(R.string.hardware_version),
+                    value = versionInfo.hardwareVersion
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun VersionInfoRow(label: String, value: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyMedium,
+            color = LocalContentColor.current.copy(alpha = 0.7f)
+        )
+        Text(
+            text = value.ifBlank { stringResource(R.string.not_set) },
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.Medium
+        )
     }
 }
 
@@ -211,12 +314,19 @@ private fun FirmwareFileItem(
                     color = LocalContentColor.current.copy(alpha = 0.7f)
                 )
             }
+            if (file.isWifiZip) {
+                Icon(
+                    Icons.Default.FolderZip,
+                    contentDescription = null,
+                    tint = LocalContentColor.current.copy(alpha = 0.5f)
+                )
+            }
         }
     }
 }
 
 @Composable
-private fun EmptyState() {
+private fun EmptyState(isRtk: Boolean) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -226,7 +336,11 @@ private fun EmptyState() {
         Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Icon(Icons.Default.NoteAdd, contentDescription = null, modifier = Modifier.size(48.dp), tint = Color.Gray)
             Text(stringResource(R.string.empty_firmware_files), color = Color.Gray)
-            Text(stringResource(R.string.tap_add_firmware), fontSize = 12.sp, color = Color.Gray)
+            Text(
+                stringResource(if (isRtk) R.string.tap_add_firmware_rtk else R.string.tap_add_firmware),
+                fontSize = 12.sp,
+                color = Color.Gray
+            )
         }
     }
 }
@@ -262,5 +376,23 @@ fun OtaTypeSelection(
             }
         }
     }
+}
+
+@Composable
+private fun FirmwareVersionField(
+    version: String,
+    enabled: Boolean,
+    onVersionChange: (String) -> Unit
+) {
+    OutlinedTextField(
+        value = version,
+        onValueChange = onVersionChange,
+        modifier = Modifier.fillMaxWidth(),
+        enabled = enabled,
+        singleLine = true,
+        label = { Text(stringResource(R.string.firmware_version)) },
+        placeholder = { Text(stringResource(R.string.ota_version_hint)) },
+        supportingText = { Text(stringResource(R.string.ota_version_editable_hint)) }
+    )
 }
 

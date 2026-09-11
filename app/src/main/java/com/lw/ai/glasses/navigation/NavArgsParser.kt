@@ -1,4 +1,4 @@
-package com.lw.ai.glasses.navigation
+
 import android.net.Uri
 import androidx.navigation.NavBackStackEntry
 import com.google.gson.Gson

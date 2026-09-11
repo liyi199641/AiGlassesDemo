@@ -11,6 +11,7 @@ package com.lw.ai.glasses.ui.imageocr
 
 import android.graphics.Bitmap
 import com.fission.wear.glasses.sdk.data.model.LanguageResult
+import com.lw.ai.glasses.ui.common.WsConnectionUiState
 import java.io.File
 
 data class ImageTranslateUiState(
@@ -24,5 +25,6 @@ data class ImageTranslateUiState(
     // 状态相关
     val isLoading: Boolean = false,
     val errorMsg: String = "",
-    val isTranslating: Boolean = false
+    val isTranslating: Boolean = false,
+    val wsConnection: WsConnectionUiState = WsConnectionUiState(),
 )

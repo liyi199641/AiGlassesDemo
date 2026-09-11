@@ -9,7 +9,7 @@
  */
 package com.lw.ai.glasses.ui.imageocr
 
-import com.lw.ai.glasses.ui.base.viewmodel.BaseViewModel
+import BaseViewModel
 import android.content.Context
 import android.graphics.BitmapFactory
 import android.util.Base64
@@ -18,6 +18,8 @@ import com.fission.wear.glasses.sdk.AiAssistantClient
 import com.fission.wear.glasses.sdk.constant.GlassesConstant
 import com.fission.wear.glasses.sdk.data.model.LanguageResult
 import com.fission.wear.glasses.sdk.events.AgentEvent
+import com.lw.ai.glasses.state.WsConnectionStateManager
+import com.lw.ai.glasses.ui.common.WsConnectionUiState
 import com.lw.ai.glasses.R
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -31,15 +33,20 @@ import javax.inject.Inject
 
 @HiltViewModel
 class ImageTranslateViewModel @Inject constructor(
-    @ApplicationContext private val context: Context
+    @ApplicationContext private val context: Context,
+    private val wsConnectionStateManager: WsConnectionStateManager,
 ) : BaseViewModel() {
     // 私有可变状态
     private val _uiState = MutableStateFlow(ImageTranslateUiState())
     // 公开不可变状态
     val uiState: StateFlow<ImageTranslateUiState> = _uiState.asStateFlow()
 
+    private var pendingLangListRequestId: Long? = null
+    private var pendingImageTransRequestId: Long? = null
+
     init {
         observeRepositoryEvents()
+        observeGlobalWsConnectionState()
         // 初始化：获取语言列表 + 监听事件
         fetchLanguages()
     }
@@ -60,9 +67,9 @@ class ImageTranslateViewModel @Inject constructor(
     // 获取支持的语言列表
     private fun fetchLanguages() {
         _uiState.value = _uiState.value.copy(isLoading = true)
-        viewModelScope.launch {
-            AiAssistantClient.getInstance().getImageTransLangList(GlassesConstant.ImageTranslateServerType.VOLC_ENGINE)
-        }
+        pendingLangListRequestId =
+            AiAssistantClient.getInstance()
+                .getImageTransLangList(GlassesConstant.ImageTranslateServerType.VOLC_ENGINE)
     }
 
     // 监听Repository的事件流
@@ -71,9 +78,11 @@ class ImageTranslateViewModel @Inject constructor(
             AiAssistantClient.getInstance().aiAgentEventFlow().collect { event->
                 when (event) {
                     is AgentEvent.ImageTransLangListResult -> {
+                        if (event.requestId != pendingLangListRequestId) return@collect
                         handleLanguageListResult(event.languageList)
                     }
-                    is AgentEvent.ImageTransResult     -> {
+                    is AgentEvent.ImageTransResult -> {
+                        if (event.requestId != pendingImageTransRequestId) return@collect
                         val imageBytes = Base64.decode(event.imageBase64, Base64.DEFAULT)
                         val bitmap = BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.size)
 
@@ -83,7 +92,8 @@ class ImageTranslateViewModel @Inject constructor(
                             errorMsg = ""
                         )
                     }
-                    is AgentEvent.ImageTransFailEvent ->{
+                    is AgentEvent.ImageTransFailEvent -> {
+                        if (event.requestId != pendingImageTransRequestId) return@collect
                         // 翻译失败
                         _uiState.value = _uiState.value.copy(
                             translatedImageBitmap = null,
@@ -156,12 +166,22 @@ class ImageTranslateViewModel @Inject constructor(
             errorMsg = ""
         )
 
+        pendingImageTransRequestId = AiAssistantClient.getInstance().imageTrans(
+            targetImage = currentState.originalImageFile,
+            sourceLanguage = currentState.selectedSourceLang.langType,
+            targetLanguage = currentState.selectedTargetLang.langType,
+        )
+    }
+
+    private fun observeGlobalWsConnectionState() {
         viewModelScope.launch {
-            AiAssistantClient.getInstance().imageTrans(
-                targetImage = currentState.originalImageFile,
-                sourceLanguage = currentState.selectedSourceLang.langType,
-                targetLanguage = currentState.selectedTargetLang.langType
-            )
+            wsConnectionStateManager.state.collect { ws ->
+                _uiState.update { it.copy(wsConnection = ws) }
+            }
         }
+    }
+
+    fun reconnectWebSocket() {
+        wsConnectionStateManager.manualReconnect()
     }
 }

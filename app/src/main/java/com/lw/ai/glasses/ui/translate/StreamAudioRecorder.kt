@@ -10,6 +10,7 @@ import android.media.audiofx.AcousticEchoCanceler
 import android.media.audiofx.AutomaticGainControl
 import android.media.audiofx.NoiseSuppressor
 import com.blankj.utilcode.util.LogUtils
+import com.fission.wear.glasses.sdk.util.SimultaneousInterpretationAudioPolicy
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -32,6 +33,8 @@ class StreamAudioRecorder(private val context: Context) {
     private var noiseSuppressor: NoiseSuppressor? = null
     private var automaticGainControl: AutomaticGainControl? = null
     private var previousAudioMode: Int? = null
+    private var previousSpeakerphoneOn: Boolean? = null
+    private var activeSimultaneousPolicy: SimultaneousInterpretationAudioPolicy? = null
 
     companion object {
         const val SAMPLE_RATE = 16000
@@ -43,11 +46,26 @@ class StreamAudioRecorder(private val context: Context) {
     @SuppressLint("MissingPermission")
     fun start(
         fileName: String,
+        /**
+         * 实时同传策略；null 时默认对话模式（通话链路 + AEC）。
+         * [SimultaneousInterpretationAudioPolicy.EXTERNAL_PLAYBACK] 保持 MODE_NORMAL + A2DP。
+         */
+        simultaneousPolicy: SimultaneousInterpretationAudioPolicy? = null,
         onAudioData: (ByteArray) -> ByteArray,
     ) {
         if (isRecording) return
 
-        enableCommunicationMode()
+        activeSimultaneousPolicy = simultaneousPolicy
+        val useCommunicationAudio = when (simultaneousPolicy) {
+            null -> true
+            SimultaneousInterpretationAudioPolicy.EXTERNAL_PLAYBACK -> false
+            SimultaneousInterpretationAudioPolicy.SPEAKER_WITH_AEC -> true
+        }
+        if (useCommunicationAudio) {
+            enableCommunicationMode(
+                enableSpeakerphone = simultaneousPolicy == SimultaneousInterpretationAudioPolicy.SPEAKER_WITH_AEC,
+            )
+        }
 
         val minBufferSize = AudioRecord.getMinBufferSize(
             SAMPLE_RATE,
@@ -55,7 +73,11 @@ class StreamAudioRecorder(private val context: Context) {
             AUDIO_FORMAT
         ) * 2
 
-        val audioSource = MediaRecorder.AudioSource.VOICE_COMMUNICATION
+        val audioSource = if (useCommunicationAudio) {
+            MediaRecorder.AudioSource.VOICE_COMMUNICATION
+        } else {
+            MediaRecorder.AudioSource.VOICE_RECOGNITION
+        }
 
         audioRecord = AudioRecord(
             audioSource,
@@ -133,14 +155,25 @@ class StreamAudioRecorder(private val context: Context) {
 
     fun getAudioSessionId(): Int = audioRecord?.audioSessionId ?: 0
 
-    private fun enableCommunicationMode() {
+    private fun enableCommunicationMode(enableSpeakerphone: Boolean) {
         val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
         previousAudioMode = audioManager.mode
         audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
+        if (enableSpeakerphone) {
+            @Suppress("DEPRECATION")
+            previousSpeakerphoneOn = audioManager.isSpeakerphoneOn
+            @Suppress("DEPRECATION")
+            audioManager.isSpeakerphoneOn = true
+        }
     }
 
     private fun restoreAudioMode() {
         val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        previousSpeakerphoneOn?.let { wasOn ->
+            @Suppress("DEPRECATION")
+            audioManager.isSpeakerphoneOn = wasOn
+            previousSpeakerphoneOn = null
+        }
         if (previousAudioMode == null) return
         val audioMode = previousAudioMode ?: return
         audioManager.mode = audioMode
@@ -201,6 +234,7 @@ class StreamAudioRecorder(private val context: Context) {
             e.printStackTrace()
         } finally {
             restoreAudioMode()
+            activeSimultaneousPolicy = null
         }
     }
 
