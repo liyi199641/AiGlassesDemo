@@ -16,8 +16,6 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
-        maven { url = uri("${rootDir}/offlineLibs/repo") }
-        maven { url = uri("${rootDir}/offlineLibs/vendor-m2") }
         maven { url = uri("https://repo.repsy.io/mvn/linwear/android") }
         maven { url = uri("https://artifact.bytedance.com/repository/AwemeOpenSDK") }
 
