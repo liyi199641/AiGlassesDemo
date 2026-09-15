@@ -7,20 +7,20 @@
 ## Table of Contents
 - [1. Permissions](#1-permissions)
 - [2. Dependencies (Required)](#2-dependencies-required)
-    - [2.0+ (recommended)](#20-recommended-modular)
-    - [Upgrading from 1.x to 2.0+](#upgrading-from-1x-to-20)
+  - [2.0+ (recommended)](#20-recommended-modular)
+  - [Upgrading from 1.x to 2.0+](#upgrading-from-1x-to-20)
 - [3. SDK Initialization](#3-sdk-initialization)
-    - [GlassesManage API support by channel](#glassesmanage-api-support-by-channel)
+  - [GlassesManage API support by channel](#glassesmanage-api-support-by-channel)
 - [4. Scan Devices](#4-scan-devices)
 - [5. Connect Device](#5-connect-device)
-    - [5.1 Connect / Disconnect BLE](#51-connect--disconnect-ble)
-    - [5.2 Subscribe BLE + BT State (Recommended)](#52-subscribe-ble--bt-state-recommended)
-    - [5.3 Manual BT Reconnect (LY / TB)](#53-manual-bt-reconnect-ly--tb)
+  - [5.1 Connect / Disconnect BLE](#51-connect--disconnect-ble)
+  - [5.2 Subscribe BLE + BT State (Recommended)](#52-subscribe-ble--bt-state-recommended)
+  - [5.3 Manual BT Reconnect (LY / TB)](#53-manual-bt-reconnect-ly--tb)
 - [6. File Sync](#6-file-sync)
 - [7. AI Assistant](#7-ai-assistant)
 - [8. AI Translation](#8-ai-translation)
 - [9. Live Streaming](#9-live-streaming)
-    - [9.6 Live Experience Config (Douyin Key / Package Name / Signing)](#96-live-experience-config-douyin-key--package-name--signing)
+  - [9.6 Live Experience Config (Douyin Key / Package Name / Signing)](#96-live-experience-config-douyin-key--package-name--signing)
 - [10. SDK Flow Events](#10-sdk-flow-events)
 - [11. Device Settings](#11-device-settings)
 - [12. OTA Upgrade](#12-ota-upgrade)
@@ -308,7 +308,7 @@ Legend: ✓ supported · △ partial / differs by channel · — not supported (
 
 | API | LY | RTK | TB | Notes |
 |-----|::|:---:|:--:|-------|
-| `startLiveStreaming` | ✓ | ✓ | — | |
+| `startLiveStreaming` | ✓ | ✓ | — | RTK: optional `LiveStreamingConfig.notificationConfig` for foreground notification |
 | `stopLiveStreaming` | ✓ | ✓ | — | |
 | `startPushLiveStreaming` | — | ✓ | — | |
 | `setLivePreviewMicState` | — | ✓ | — | |
@@ -1102,11 +1102,11 @@ Demo: `AiAssistantClient.resolveSimultaneousInterpretationAudioPolicy()` → `St
 To enable custom mode, please contact the development team.
 
 - `GlassesManage.startAiAssistant`: start recording
-    - `AudioStateEvent.ReceivingAudioData`: continuous audio input
+  - `AudioStateEvent.ReceivingAudioData`: continuous audio input
 - `GlassesManage.stopAiAssistant()`: stop recording
 - `GlassesManage.interruptAiAssistant()`: interrupt recording
 - `GlassesManage.takePicture(true)`: AI image recognition (`takePhotoOnly = true` sends image to the app; `false` saves on glasses — see [11.8 Device-side capture](#8-device-side-capture-and-photo))
-    - callback events: `CmdResultEvent.ImageData` / `CmdResultEvent.ImageFile`
+  - callback events: `CmdResultEvent.ImageData` / `CmdResultEvent.ImageFile`
 
 ---
 
@@ -1163,7 +1163,16 @@ GlassesManage.startLiveStreaming(
         minQp = 0,
         videoBitRateMode = GlassesConstant.VideoBitRateMode.VBR,
         previewView = previewView,
-        mode = LiveStreamingMode.PREVIEW
+        mode = LiveStreamingMode.PREVIEW,
+        // RTK optional: live foreground-service notification (R.string / R.drawable only)
+        notificationConfig = LiveStreamingNotificationConfig(
+            startTitleRes = R.string.live_notification_start_title,
+            startContentRes = R.string.live_notification_start_content,
+            networkDisconnectedTitleRes = R.string.live_notification_net_disconnect_title,
+            networkDisconnectedContentRes = R.string.live_notification_net_disconnect_content,
+            stopActionRes = R.string.live_notification_stop_action,
+            smallIconRes = R.drawable.ic_live_notification,
+        ),
     )
 )
 
@@ -1194,6 +1203,20 @@ GlassesManage.stopLiveStreaming()
 | `pushUrl` | `String?` | `null` | RTMP push URL; `null` with `mode = PREVIEW` means preview only |
 | `previewView` | `RTKVideoView?` | `null` | RTK preview view |
 | `mode` | `LiveStreamingMode` | `PREVIEW` | Live mode: `PREVIEW` preview only / `PUSH` push only / `PREVIEW_PUSH` preview + push |
+| `notificationConfig` | `LiveStreamingNotificationConfig?` | `null` | **RTK**: live foreground-service notification; `null` uses RTK defaults |
+
+**`LiveStreamingNotificationConfig` fields (`notificationConfig`, RTK smartwear ≥ 1.8.70)**:
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `startTitleRes` | `@StringRes Int` | Notification title when the live service starts; `0` (`RES_ID_UNSET`) uses RTK default |
+| `startContentRes` | `@StringRes Int` | Notification body when the live service starts |
+| `networkDisconnectedTitleRes` | `@StringRes Int` | Notification title when the network disconnects |
+| `networkDisconnectedContentRes` | `@StringRes Int` | Notification body when the network disconnects |
+| `stopActionRes` | `@StringRes Int` | Notification action label to stop live streaming |
+| `smallIconRes` | `@DrawableRes Int` | Notification small icon |
+
+> Notification strings and icons accept **resource IDs only**, not runtime `String` or `Drawable` objects.
 
 **Callback events (`LiveEvent`)**:
 
@@ -1245,7 +1268,7 @@ To integrate Douyin live streaming, the Demo (`app` module) must use the **appli
 1. Edit `douyin.properties`: set `CONFIG_ENABLED` to `true` and fill in the values for your customer/channel:
 
    | Key | Description | Example |
-      |-----|-------------|---------|
+   |-----|-------------|---------|
    | `CONFIG_ENABLED` | Master switch; when `false` or the file is missing, no signing is configured and Studio's default `debug.keystore` is used | `true` |
    | `APPLICATION_ID` | Application package name; must match the Douyin console registration | `com.xxx.xxx.xxx` |
    | `KEY_STORE_FILE` | jks path, relative to project root | `key/xxx.jks` |

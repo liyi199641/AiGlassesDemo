@@ -203,7 +203,15 @@ class AppStartupReconnectManager @Inject constructor(
             return
         }
 
-        GlassesManage.connect(BleComConfig(context, savedAddress, false))
+        GlassesManage.connect(
+            BleComConfig(
+                context = context,
+                mac = savedAddress,
+                isOtaMode = false,
+                deviceName = savedName,
+                adaptationNumber = bluetoothDataManager.getBluetoothAdapter(),
+            )
+        )
     }
 
     private fun hasBluetoothConnectPermission(): Boolean {

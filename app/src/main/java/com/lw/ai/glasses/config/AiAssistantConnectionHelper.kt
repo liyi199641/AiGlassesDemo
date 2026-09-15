@@ -17,12 +17,13 @@ object AiAssistantConnectionHelper {
         if (!appDataManager.getAutoConnectAiEnabled()) return
         val address = bluetoothDataManager.getBluetoothAddress()
         val name = bluetoothDataManager.getBluetoothName()
+        val adapterNum = bluetoothDataManager.getBluetoothAdapter().orEmpty()
         if (address.isNullOrBlank() || name.isNullOrBlank()) return
 
         AiAssistantClient.getInstance().connectAiAssistant(
             address,
             name,
-            "18800",
+            adapterNum,
             "ukuSPzMnpLvLS2TTLL9S8PvUJzfTCHnu",
             "tz5dgRLm6tXS8gRr",
         )

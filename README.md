@@ -7,20 +7,20 @@
 ## 📚 目录 (TOC)
 - [1. 添加权限](#1-添加权限)
 - [2. 添加依赖（必须）](#2-添加依赖必须)
-    - [2.0+（推荐）](#20推荐按方案拆分)
-    - [从 1.x 升级到 2.0+](#从-1x-升级到-20)
+  - [2.0+（推荐）](#20推荐按方案拆分)
+  - [从 1.x 升级到 2.0+](#从-1x-升级到-20)
 - [3. SDK 初始化](#3-sdk-初始化)
-    - [GlassesManage API 方案支持](#glassesmanage-api-方案支持)
+  - [GlassesManage API 方案支持](#glassesmanage-api-方案支持)
 - [4. 搜索设备](#4-搜索设备)
 - [5. 连接设备](#5-连接设备)
-    - [5.1 连接 / 断开 BLE](#51-连接--断开-ble)
-    - [5.2 订阅 BLE + BT 连接状态（推荐）](#52-订阅-ble--bt-连接状态推荐)
-    - [5.3 手动重连 BT（LY / TB）](#53-手动重连-btly--tb)
+  - [5.1 连接 / 断开 BLE](#51-连接--断开-ble)
+  - [5.2 订阅 BLE + BT 连接状态（推荐）](#52-订阅-ble--bt-连接状态推荐)
+  - [5.3 手动重连 BT（LY / TB）](#53-手动重连-btly--tb)
 - [6. 同步文件](#6-同步文件)
 - [7. AI 助手功能](#7-ai-助手功能)
 - [8. AI 翻译](#8-ai-翻译)
 - [9. 直播](#9-直播)
-    - [9.6 直播体验配置（抖音 Key / 包名 / 签名）](#96-直播体验配置抖音-key--包名--签名)
+  - [9.6 直播体验配置（抖音 Key / 包名 / 签名）](#96-直播体验配置抖音-key--包名--签名)
 - [10. SDK Flow 流监听](#10-sdk-flow-流监听)
 - [11. 眼镜设置功能](#11-眼镜设置功能)
 - [12. OTA 升级](#12-ota-升级)
@@ -33,21 +33,21 @@
 <uses-permission android:name="android.permission.INTERNET"/>
 <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"/>
 <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>
-    <!-- 蓝牙连接 -->
+<!-- 蓝牙连接 -->
 <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
 <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
-    <!-- 媒体文件同步 -->
+<!-- 媒体文件同步 -->
 <uses-permission android:name="android.permission.ACCESS_WIFI_STATE"/>
 <uses-permission android:name="android.permission.CHANGE_WIFI_STATE"/>
 <uses-permission
 android:name="android.permission.NEARBY_WIFI_DEVICES"
 android:usesPermissionFlags="neverForLocation"
 tools:targetApi="33" />
-    <!-- AI 翻译、音视频通话（手机端采集） -->
+<!-- AI 翻译、音视频通话（手机端采集） -->
 <uses-permission android:name="android.permission.RECORD_AUDIO"/>
-    <!-- 视频通话 -->
+<!-- 视频通话 -->
 <uses-permission android:name="android.permission.CAMERA"/>
-    <!-- 直播前台服务 -->
+<!-- 直播前台服务 -->
 <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 ```
 
@@ -308,7 +308,7 @@ AiAssistantClient.getInstance().initializeAiClient(
 
 | API | LY | RTK | TB | 说明 |
 |-----|:--:|:---:|:--:|----|
-| `startLiveStreaming` | ✓ | ✓ | — | |
+| `startLiveStreaming` | ✓ | ✓ | — | RTK 可通过 `LiveStreamingConfig.notificationConfig` 自定义前台服务通知栏 |
 | `stopLiveStreaming` | ✓ | ✓ | — | |
 | `startPushLiveStreaming` | — | ✓ | — | |
 | `setLivePreviewMicState` | — | ✓ | — | |
@@ -398,8 +398,8 @@ GlassesManage.startScanBleDevices(
         scanDuration = 120_000,
     ),
     scanSettings = ScanSettings.Builder()
-            .setScanMode(ScanSettings.SCAN_MODE_BALANCED)
-            .build(),
+        .setScanMode(ScanSettings.SCAN_MODE_BALANCED)
+        .build(),
     scanFilters = arrayOf(ScanFilter.Builder().build()),
 )
 
@@ -1099,12 +1099,12 @@ Demo：`AiAssistantClient.resolveSimultaneousInterpretationAudioPolicy()` → `S
 ### ✅ 自定义大模型（App 自己实现）
 如需开启自定义模式 请联系开发人员。
 
-- **GlassesManage.startAiAssistant**：开始录音
-    - AudioStateEvent.ReceivingAudioData：持续接收录音数据
+- **GlassesManage.startAiAssistant**：开始录音 
+  - AudioStateEvent.ReceivingAudioData：持续接收录音数据
 - **GlassesManage.stopAiAssistant()**：停止录音
 - **GlassesManage.interruptAiAssistant()**：打断录音
 - **GlassesManage.takePicture(true)**：AI 识图（`takePhotoOnly = true` 时图片回传 App；`false` 时保存到眼镜，见 [11.8 设备侧采集与拍照](#8️⃣-设备侧采集与拍照)）
-    - 回调事件：`CmdResultEvent.ImageData` / `CmdResultEvent.ImageFile`
+  - 回调事件：`CmdResultEvent.ImageData` / `CmdResultEvent.ImageFile`
 ---
 
 
@@ -1161,7 +1161,16 @@ GlassesManage.startLiveStreaming(
         minQp = 0,
         videoBitRateMode = GlassesConstant.VideoBitRateMode.VBR,
         previewView = previewView,
-        mode = LiveStreamingMode.PREVIEW
+        mode = LiveStreamingMode.PREVIEW,
+        // RTK 可选：直播前台服务通知栏（仅 R.string / R.drawable 资源 ID）
+        notificationConfig = LiveStreamingNotificationConfig(
+            startTitleRes = R.string.live_notification_start_title,
+            startContentRes = R.string.live_notification_start_content,
+            networkDisconnectedTitleRes = R.string.live_notification_net_disconnect_title,
+            networkDisconnectedContentRes = R.string.live_notification_net_disconnect_content,
+            stopActionRes = R.string.live_notification_stop_action,
+            smallIconRes = R.drawable.ic_live_notification,
+        ),
     )
 )
 
@@ -1192,6 +1201,20 @@ GlassesManage.stopLiveStreaming()
 | `pushUrl` | `String?` | `null` | RTMP 推流地址；`null` 且 `mode` 为 `PREVIEW` 时仅预览 |
 | `previewView` | `RTKVideoView?` | `null` | RTK 预览视图 |
 | `mode` | `LiveStreamingMode` | `PREVIEW` | 直播模式：`PREVIEW` 仅预览 / `PUSH` 仅推流 / `PREVIEW_PUSH` 预览+推流 |
+| `notificationConfig` | `LiveStreamingNotificationConfig?` | `null` | **RTK**：直播前台服务通知栏；`null` 使用 RTK 默认 |
+
+**`LiveStreamingNotificationConfig` 字段（`notificationConfig`，RTK smartwear ≥ 1.8.70）**：
+
+| 参数 | 类型 | 说明 |
+|------|------|------|
+| `startTitleRes` | `@StringRes Int` | 直播服务启动时通知标题；`0`（`RES_ID_UNSET`）表示使用 RTK 默认 |
+| `startContentRes` | `@StringRes Int` | 直播服务启动时通知正文 |
+| `networkDisconnectedTitleRes` | `@StringRes Int` | 网络断开时通知标题 |
+| `networkDisconnectedContentRes` | `@StringRes Int` | 网络断开时通知正文 |
+| `stopActionRes` | `@StringRes Int` | 通知栏停止直播操作按钮文案 |
+| `smallIconRes` | `@DrawableRes Int` | 通知小图标 |
+
+> 通知栏文案与图标**仅支持资源 ID**，不支持运行时 `String` 或 `Drawable` 对象。
 
 **回调事件（`LiveEvent`）**：
 
@@ -1243,7 +1266,7 @@ Demo（`app` 模块）对接抖音直播时，需使用与抖音开放平台登�
 1. 编辑 `douyin.properties`，将 `CONFIG_ENABLED` 设为 `true`，并填入对应客户/渠道的值：
 
    | Key | 说明 | 示例 |
-      |-----|------|------|
+   |-----|------|------|
    | `CONFIG_ENABLED` | 总开关；`false` 或文件缺失时不配置签名，用 Studio 默认 `debug.keystore` 打包 | `true` |
    | `APPLICATION_ID` | 应用包名，需与抖音后台登记一致 | `com.xxx.xxx.xxx` |
    | `KEY_STORE_FILE` | jks 签名文件路径（相对项目根目录） | `key/xxx.jks` |

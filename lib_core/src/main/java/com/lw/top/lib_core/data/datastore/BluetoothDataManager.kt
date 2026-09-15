@@ -17,10 +17,15 @@ class BluetoothDataManager @Inject constructor(
     private val dataStore: DataStore<Preferences>
 ) {
     private object BluetoothKeys {
+        val BLUETOOTH_ADAPTER_NUMBER = stringPreferencesKey("bluetooth_adapter_number")
         val BLUETOOTH_ADDRESS = stringPreferencesKey("bluetooth_address")
         val BLUETOOTH_NAME = stringPreferencesKey("bluetooth_name")
         val BLUETOOTH_STATE = intPreferencesKey("bluetooth_state")
         val SDK_CHANNEL = stringPreferencesKey("bluetooth_sdk_channel")
+    }
+
+    val savedBluetoothAdapter: Flow<String?> = dataStore.data.map { preferences ->
+        preferences[BluetoothKeys.BLUETOOTH_ADAPTER_NUMBER]
     }
 
     val savedBluetoothAddress: Flow<String?> = dataStore.data.map { preferences ->
@@ -46,15 +51,28 @@ class BluetoothDataManager @Inject constructor(
         return savedBluetoothState.first()
     }
 
+    suspend fun getBluetoothAdapter(): String? {
+        return savedBluetoothAdapter.firstOrNull()
+    }
+
     /**
-     * 保存蓝牙设备的地址、名称及广播解析出的 SDK 渠道。
+     * 保存蓝牙设备的地址、名称、SDK 渠道及广播解析出的适配号。
+     * 适配号仅在非空时写入，避免重连路径用空值覆盖已保存的适配号。
      */
-    suspend fun saveBluetoothDevice(address: String, name: String, sdkChannel: String? = null) {
+    suspend fun saveBluetoothDevice(
+        address: String,
+        name: String,
+        sdkChannel: String? = null,
+        adaptationNumber: String? = null,
+    ) {
         dataStore.edit { preferences ->
             preferences[BluetoothKeys.BLUETOOTH_ADDRESS] = address
             preferences[BluetoothKeys.BLUETOOTH_NAME] = name
             if (!sdkChannel.isNullOrBlank()) {
                 preferences[BluetoothKeys.SDK_CHANNEL] = sdkChannel
+            }
+            if (!adaptationNumber.isNullOrBlank()) {
+                preferences[BluetoothKeys.BLUETOOTH_ADAPTER_NUMBER] = adaptationNumber
             }
         }
     }
@@ -77,6 +95,7 @@ class BluetoothDataManager @Inject constructor(
             preferences.remove(BluetoothKeys.BLUETOOTH_ADDRESS)
             preferences.remove(BluetoothKeys.BLUETOOTH_NAME)
             preferences.remove(BluetoothKeys.SDK_CHANNEL)
+            preferences.remove(BluetoothKeys.BLUETOOTH_ADAPTER_NUMBER)
             preferences[BluetoothKeys.BLUETOOTH_STATE] = 0
         }
     }

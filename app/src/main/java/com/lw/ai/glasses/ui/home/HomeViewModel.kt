@@ -557,7 +557,7 @@ class HomeViewModel @Inject constructor(
                         macAddress = bluetoothDataManager.getBluetoothAddress()!!,
                         deviceName = bluetoothDataManager.getBluetoothName()!!,
                         channelType = null,
-                        adaptationNumber = "",
+                        adaptationNumber = bluetoothDataManager.getBluetoothAdapter().orEmpty(),
                         rssi = 0,
                     )
                 )
@@ -570,13 +570,15 @@ class HomeViewModel @Inject constructor(
                 mac = device.macAddress,
                 isOtaMode = device.isOtaMode,
                 deviceName = device.deviceName,
-                adaptationNumber = device.adaptationNumber.takeIf { it.isNotBlank() },
+                adaptationNumber = device.adaptationNumber.takeIf { it.isNotBlank() }
+                    ?: bluetoothDataManager.getBluetoothAdapter()?.takeIf { it.isNotBlank() },
             )
         )
         bluetoothDataManager.saveBluetoothDevice(
             address = device.macAddress,
             name = device.deviceName,
             sdkChannel = device.channelType?.name,
+            adaptationNumber = device.adaptationNumber.takeIf { it.isNotBlank() },
         )
         _uiState.update {
             it.copy(
