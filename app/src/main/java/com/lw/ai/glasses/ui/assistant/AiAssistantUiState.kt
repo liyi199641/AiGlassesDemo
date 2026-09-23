@@ -8,6 +8,7 @@ data class AiAssistantUiState(
     val messages: List<AiAssistantEntity> = emptyList(),
     val streamingMessageId: Long? = null,
     val playingAnswerAudioPath: String? = null,
+    val playingQuestionAudioPath: String? = null,
     val agentAudioPlaybackEnabled: Boolean = true,
     /** SDK 上报的 AI 对话进行中（录音 / 等待回复 / TTS 下发），收到 tts stop 即结束。 */
     val isAiDialogueInProgress: Boolean = false,

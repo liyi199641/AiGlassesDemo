@@ -7,6 +7,8 @@ import android.app.Activity
 import android.content.Context
 import android.content.pm.PackageManager
 import android.net.Network
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.view.View
 import androidx.annotation.OptIn
 import androidx.core.content.ContextCompat
@@ -26,6 +28,7 @@ import com.fission.wear.glasses.sdk.live.LiveDisconnectMonitor
 import com.fission.wear.glasses.sdk.live.LivePreviewCallback
 import com.fission.wear.glasses.sdk.live.LiveStreamErrors
 import com.lw.ai.glasses.R
+import com.lw.ai.glasses.config.ProductSeriesResolver
 import com.lw.ai.glasses.config.SdkChannelResolver
 import com.lw.ai.glasses.utils.SdkErrorMessages
 import com.lw.top.lib_core.data.datastore.BluetoothDataManager
@@ -43,6 +46,8 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.lang.ref.WeakReference
+import java.net.HttpURLConnection
+import java.net.URL
 import javax.inject.Inject
 
 @HiltViewModel
@@ -194,8 +199,9 @@ class LiveViewModel @Inject constructor(
         // 预览视图统一通过 LiveStreamingConfig.previewView 传入 startLiveStreaming（RTK 方案）；
         // LY 方案在 App 侧用 ExoPlayer 拉流，视图交给本地 LyLivePreviewController。
         if (_uiState.value.isLyScheme) {
+            val controller = ensureLyLivePreviewController()
             val playerView = view as? PlayerView ?: return
-            ensureLyLivePreviewController().attachPreviewView(playerView)
+            controller.attachPreviewView(playerView)
             tryStartLyLocalPreview()
         }
     }
@@ -240,6 +246,48 @@ class LiveViewModel @Inject constructor(
         val nextRotation = if (_uiState.value.previewRotation == 0) 90 else 0
         _uiState.update { it.copy(previewRotation = nextRotation) }
         GlassesManage.setLivePreviewRotation(nextRotation)
+    }
+
+    /**
+     * 验证“预览方案下进程默认网络在蜂窝且可访问公网”。
+     *
+     * relay 方案不会 `bindProcessToNetwork`，眼镜拉流通过 apNetwork 显式绑定，
+     * 因此进程默认路由应仍为蜂窝（眼镜 AP 热点无公网，Android 不会选为默认网络）。
+     * 此处用未绑定的 HttpURLConnection 访问公网，走的就是进程默认网络。
+     */
+    fun verifyPublicNetwork() {
+        _uiState.update { it.copy(networkCheckResult = "验证中…") }
+        viewModelScope.launch(Dispatchers.IO) {
+            val result = runCatching {
+                val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+                val caps = cm.activeNetwork?.let { cm.getNetworkCapabilities(it) }
+                val transport = when {
+                    caps == null -> "无活动网络"
+                    caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) -> "蜂窝(CELLULAR)"
+                    caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) -> "Wi-Fi(WIFI)"
+                    caps.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) -> "以太网(ETHERNET)"
+                    else -> "其他"
+                }
+                val conn = URL(PUBLIC_PROBE_URL).openConnection() as HttpURLConnection
+                conn.connectTimeout = 5000
+                conn.readTimeout = 5000
+                conn.requestMethod = "GET"
+                conn.instanceFollowRedirects = false
+                val startMs = System.currentTimeMillis()
+                val code = conn.responseCode
+                val cost = System.currentTimeMillis() - startMs
+                conn.disconnect()
+                val reachable = code in 200..399
+                "进程默认网络=$transport | 公网 HTTP=$code ${if (reachable) "✓可达" else "✗不可达"} | 耗时=${cost}ms"
+            }.getOrElse { e ->
+                "公网验证失败：${e.javaClass.simpleName}: ${e.message}"
+            }
+            LogUtils.d("LiveViewModel", "verifyPublicNetwork: $result")
+            withContext(Dispatchers.Main) {
+                _uiState.update { it.copy(networkCheckResult = result) }
+                ToastUtils.showShort(result)
+            }
+        }
     }
 
     fun updateFps(fps: Int) {
@@ -528,10 +576,27 @@ class LiveViewModel @Inject constructor(
         return rtmpPushUrl
     }
 
-    private fun startLiveStreaming(
+    private suspend fun syncLyProductSeriesForLive() {
+        if (!_uiState.value.isLyScheme) return
+        val series = ProductSeriesResolver.resolve(
+            bluetoothDataManager.getBluetoothName(),
+            bluetoothDataManager.getBluetoothAdapter(),
+        )
+        _uiState.update {
+            it.copy(
+                isLyTSeries = series == GlassesConstant.ProductSeries.T,
+                // S 系列源画面需旋转 270°；T 系列无需旋转。
+                lyRotationDegrees = if (series == GlassesConstant.ProductSeries.T) 0 else 270,
+            )
+        }
+        GlassesManage.setProductSeries(series)
+    }
+
+    private suspend fun startLiveStreaming(
         mode: LiveStreamingMode,
         pushUrl: String? = null,
     ) {
+        syncLyProductSeriesForLive()
         markLiveApEnableStarted()
         val (width, height) = parseResolution(_uiState.value.targetResolution)
         val isLy = _uiState.value.isLyScheme
@@ -619,8 +684,18 @@ class LiveViewModel @Inject constructor(
     private fun tryStartLyLocalPreview() {
         val rtspUrl = pendingLyRtspUrl ?: return
         val network = pendingLyApNetwork ?: return
-        if (!previewViewAttached || previewView !is PlayerView) return
-        ensureLyLivePreviewController().startPreview(rtspUrl, network)
+        if (!previewViewAttached) return
+        if (previewView !is PlayerView) return
+        ensureLyLivePreviewController().startPreview(
+            rtspUrl, network, _uiState.value.previewAudioEnabled,
+        )
+    }
+
+    /** 循环切换 LY 预览画面旋转角度（0→90→180→270），仅客户端 graphicsLayer 旋转。 */
+    fun toggleLyPreviewRotation() {
+        if (!_uiState.value.isLyScheme) return
+        val next = (_uiState.value.lyRotationDegrees + 90) % 360
+        _uiState.update { it.copy(lyRotationDegrees = next) }
     }
 
     private fun handleLyLocalPreviewFailed(errorCode: Int) {
@@ -827,6 +902,9 @@ class LiveViewModel @Inject constructor(
 
     private companion object {
         private const val LIVE_AP_ENABLE_MIN_INTERVAL_MS = 10_000L
+
+        /** 公网连通性探测地址（国内可达，不绑定任何特定网络）。 */
+        private const val PUBLIC_PROBE_URL = "https://www.baidu.com"
 
         private fun LiveStreamingMode.requiresDouyinSdkInit(): Boolean =
             this == LiveStreamingMode.PREVIEW_PUSH || this == LiveStreamingMode.PUSH

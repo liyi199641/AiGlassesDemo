@@ -412,11 +412,14 @@ class HomeViewModel @Inject constructor(
     private suspend fun initGlassesSdkAndAiClient(
         deviceName: String? = null,
         channelType: GlassesConstant.ChannelType? = null,
+        adaptationNumber: String? = null,
     ) {
         val snapshot = AppConfigLoader.loadSnapshot(appDataManager)
         val resolvedName = deviceName
             ?: bluetoothDataManager.getBluetoothName()
-        val productSeries = ProductSeriesResolver.fromDeviceName(resolvedName)
+        val resolvedAdaptation = adaptationNumber?.takeIf { it.isNotBlank() }
+            ?: bluetoothDataManager.getBluetoothAdapter()
+        val productSeries = ProductSeriesResolver.resolve(resolvedName, resolvedAdaptation)
         val channel = channelType ?: SdkChannelResolver.loadForSdkInit(bluetoothDataManager, appDataManager)
         LogUtils.i(
             "HomeViewModel",
@@ -505,7 +508,7 @@ class HomeViewModel @Inject constructor(
                 markReconnectingIfNeeded()
             }
             val deviceName = device.deviceName.ifBlank { bluetoothDataManager.getBluetoothName() }
-            initGlassesSdkAndAiClient(deviceName, channel)
+            initGlassesSdkAndAiClient(deviceName, channel, device.adaptationNumber)
             connectDeviceInternal(device)
         }
     }

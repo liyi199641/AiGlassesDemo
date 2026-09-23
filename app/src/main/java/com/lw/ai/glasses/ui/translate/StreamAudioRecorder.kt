@@ -11,6 +11,7 @@ import android.media.audiofx.AutomaticGainControl
 import android.media.audiofx.NoiseSuppressor
 import com.blankj.utilcode.util.LogUtils
 import com.fission.wear.glasses.sdk.util.SimultaneousInterpretationAudioPolicy
+import com.fission.wear.glasses.sdk.util.appFilesRoot
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -88,7 +89,7 @@ class StreamAudioRecorder(private val context: Context) {
         )
         enableAudioEffects(audioRecord?.audioSessionId ?: 0)
 
-        val recordDir = File(context.filesDir, RECORDING_DIR).apply {
+        val recordDir = File(context.appFilesRoot(), RECORDING_DIR).apply {
             if (!exists()) {
                 mkdirs()
             }

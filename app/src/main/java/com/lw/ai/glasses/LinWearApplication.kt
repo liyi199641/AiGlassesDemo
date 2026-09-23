@@ -6,6 +6,7 @@ import com.blankj.utilcode.util.Utils
 import com.bytedance.sdk.open.douyin.DouYinOpenApiFactory
 import com.bytedance.sdk.open.douyin.DouYinOpenConfig
 import com.lw.ai.glasses.startup.AppStartupReconnectManager
+import com.lw.ai.glasses.utils.LogWatcher
 import dagger.hilt.android.HiltAndroidApp
 import io.reactivex.rxjava3.exceptions.UndeliverableException
 import io.reactivex.rxjava3.plugins.RxJavaPlugins
@@ -34,6 +35,8 @@ class LinWearApplication : Application(){
             setSaveDays(7)
             setFilePrefix("AiGlass")
         }
+
+        LogWatcher.getInstance().startWatch(applicationContext)//RTK日志辅助工具
 
         val clientkey = "aw21acpmg1c718rd" // 需要到开发者网站申请并替换
         DouYinOpenApiFactory.init(DouYinOpenConfig(clientkey))

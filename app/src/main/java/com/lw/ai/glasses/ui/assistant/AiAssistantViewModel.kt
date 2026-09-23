@@ -160,15 +160,34 @@ class AiAssistantViewModel @Inject constructor(
     private fun stopAnswerAudioPlayback() {
         mediaPlayer?.release()
         mediaPlayer = null
-        _uiState.update { it.copy(playingAnswerAudioPath = null) }
+        _uiState.update {
+            it.copy(
+                playingAnswerAudioPath = null,
+                playingQuestionAudioPath = null,
+            )
+        }
     }
 
     fun playAnswerAudio(path: String) {
+        playLocalAudio(path, isQuestion = false)
+    }
+
+    fun playQuestionAudio(path: String) {
+        playLocalAudio(path, isQuestion = true)
+    }
+
+    private fun playLocalAudio(path: String, isQuestion: Boolean) {
         if (_uiState.value.isAiDialogueInProgress) return
         try {
             GlassesManage.interruptAiAssistant()//打断sdk的播放
             stopAnswerAudioPlayback()
-            _uiState.update { it.copy(playingAnswerAudioPath = path) }
+            _uiState.update {
+                if (isQuestion) {
+                    it.copy(playingQuestionAudioPath = path, playingAnswerAudioPath = null)
+                } else {
+                    it.copy(playingAnswerAudioPath = path, playingQuestionAudioPath = null)
+                }
+            }
             mediaPlayer = android.media.MediaPlayer().apply {
                 setDataSource(path)
                 prepare()
@@ -177,7 +196,13 @@ class AiAssistantViewModel @Inject constructor(
                     player.release()
                     mediaPlayer = null
                     _uiState.update { state ->
-                        if (state.playingAnswerAudioPath == path) {
+                        if (isQuestion) {
+                            if (state.playingQuestionAudioPath == path) {
+                                state.copy(playingQuestionAudioPath = null)
+                            } else {
+                                state
+                            }
+                        } else if (state.playingAnswerAudioPath == path) {
                             state.copy(playingAnswerAudioPath = null)
                         } else {
                             state
@@ -186,7 +211,12 @@ class AiAssistantViewModel @Inject constructor(
                 }
             }
         } catch (e: Exception) {
-            _uiState.update { it.copy(playingAnswerAudioPath = null) }
+            _uiState.update {
+                it.copy(
+                    playingAnswerAudioPath = null,
+                    playingQuestionAudioPath = null,
+                )
+            }
             e.printStackTrace()
         }
     }

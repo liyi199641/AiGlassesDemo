@@ -1,6 +1,6 @@
 # LinWear Ai Glasses SDK 文档（中文版）
 
-> [English](README-en.md)
+> [English](README-en.md) · [AI 功能文档](AI-README.md)
 
 ---
 
@@ -17,14 +17,15 @@
   - [5.2 订阅 BLE + BT 连接状态（推荐）](#52-订阅-ble--bt-连接状态推荐)
   - [5.3 手动重连 BT（LY / TB）](#53-手动重连-btly--tb)
 - [6. 同步文件](#6-同步文件)
-- [7. AI 助手功能](#7-ai-助手功能)
-- [8. AI 翻译](#8-ai-翻译)
-- [9. 直播](#9-直播)
-  - [9.6 直播体验配置（抖音 Key / 包名 / 签名）](#96-直播体验配置抖音-key--包名--签名)
-- [10. SDK Flow 流监听](#10-sdk-flow-流监听)
-- [11. 眼镜设置功能](#11-眼镜设置功能)
-- [12. OTA 升级](#12-ota-升级)
-- [13. 错误码说明](#13-错误码说明)
+- [7. AI 功能](#7-ai-功能) → 详见 [docs/AI-README.md](AI-README.md)
+- [8. 直播](#8-直播)
+  - [8.6 直播体验配置（抖音 Key / 包名 / 签名）](#86-直播体验配置抖音-key--包名--签名)
+- [9. SDK Flow 流监听](#9-sdk-flow-流监听)
+- [10. 眼镜设置功能](#10-眼镜设置功能)
+- [11. OTA 升级](#11-ota-升级)
+- [12. 错误码说明](#12-错误码说明)
+
+> **AI 能力**（助手 / 翻译 / 图片翻译 / 通话等）已独立成册：[**AI 功能使用文档**](AI-README.md) · [English](AI-README-en.md)
 
 ---
 
@@ -47,8 +48,9 @@ tools:targetApi="33" />
 <uses-permission android:name="android.permission.RECORD_AUDIO"/>
 <!-- 视频通话 -->
 <uses-permission android:name="android.permission.CAMERA"/>
-<!-- 直播前台服务 -->
+<!-- 直播前台服务，WIFI保活 -->
 <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+<uses-permission android:name="android.permission.WAKE_LOCK" />
 ```
 
 ---
@@ -132,7 +134,7 @@ android {
 3. （可选）`AiAssistantClient.getInstance().applyServerEnvironmentToGlobals(...)` — 设置 AI 服务环境（可在 `initializeAiClient` 前后调用）
 4. `GlassesManage.initialize(SdkConfig(...))` — 仅**首次**生效，重复调用会被忽略
 5. `AiAssistantClient.getInstance().initializeAiClient(AiAgentConfig(...))` — 切换环境或重配 AI 时需再次调用；**不会**自动重连 AI 服务
-6. 眼镜 BLE 连接成功并取得鉴权参数后，调用 `connectAiAssistant(...)`（见第 7 节）
+6. 眼镜 BLE 连接成功并取得鉴权参数后，调用 `connectAiAssistant(...)`（见 [AI 文档](AI-README.md)）
 
 ```kotlin
 // Application.onCreate 或进入眼镜业务前
@@ -183,8 +185,8 @@ AiAssistantClient.getInstance().initializeAiClient(
 | `context` | `Context` | 是 | — | 应用上下文，SDK 内部会取 `applicationContext` 使用。                                     |
 | `channel` | `GlassesConstant.ChannelType` | 是 | — | 眼镜硬件/协议渠道，决定 BLE 指令策略与能力差异。**必须与所连接眼镜方案一致**。                                |
 | `logLevel` | `Int` | 否 | `LogUtils.V` | SDK 日志输出级别，使用 UtilCodex `LogUtils` 常量：`V`（最详细）→ `D` → `I` → `W` → `E`（最精简）。 |
-| `mediaFilesStorageDirName` | `String` | 否 | `"mediaFiles"` | 从眼镜同步的媒体文件保存目录名，位于 `context.filesDir` 下。                                    |
-| `aiImageRecognitionStorageDirName` | `String` | 否 | `"tempImages"` | AI 识图临时图片保存目录名，位于 `context.filesDir` 下。                                     |
+| `mediaFilesStorageDirName` | `String` | 否 | `"mediaFiles"` | 从眼镜同步的媒体文件保存目录名，位于应用外部存储沙盒 `getExternalFilesDir(null)` 下（不可用时回退 `filesDir`）。                                    |
+| `aiImageRecognitionStorageDirName` | `String` | 否 | `"tempImages"` | AI 识图临时图片保存目录名，位于应用外部存储沙盒 `getExternalFilesDir(null)` 下（不可用时回退 `filesDir`）。                                     |
 | `productSeries` | `GlassesConstant.ProductSeries` | 否 | `S` | LY方案：眼镜产品系列，影响媒体同步 Wi-Fi 模式能力与 ISP OTA 结果解析。**须与所连接眼镜硬件系列一致**。              |
 | `deviceLensType` | `GlassesConstant.LensType` | 否 | `LensType.FLAT_ANGLE` | 镜头类型。RTK 渠道同步 JPG 时，广角开启畸变校正，平角跳过。仅在 `initialize` 时传入生效。                    |
 
@@ -217,48 +219,9 @@ AiAssistantClient.getInstance().initializeAiClient(
 
 ### **AiAgentConfig 参数说明**
 
-`AiAssistantClient.getInstance().initializeAiClient(AiAgentConfig(...))` 使用以下配置项：
+AI 客户端配置（`initializeAiClient(AiAgentConfig)`）的完整参数表、环境切换与连接说明，请参阅 **[AI 功能使用文档 §3](AI-README.md#3-ai-初始化与配置)**。
 
-| 参数 | 类型 | 必填 | 默认值 | 说明 |
-|------|------|:----:|--------|------|
-| `context` | `Context` | 是 | — | 应用上下文，用于创建即构通话、图片翻译等组件。 |
-| `channel` | `GlassesConstant.ChannelType` | 是 | — | AI 业务渠道，**建议与 `SdkConfig.channel` 保持一致**。 |
-| `aiModelType` | `GlassesConstant.AiModelVendor` | 否 | `DEFAULT` | 大模型供应商标识，影响 AI 对话/翻译等请求路由。 |
-| `serverEnvironment` | `GlassesConstant.ServerEnvironment` | 否 | `DEV` | 预置 AI 服务环境（HTTP `baseUrl` + AI 服务 `wsUrl`）。当 `customServerEnvironment` 非空时被忽略。 |
-| `customServerEnvironment` | `AiServerEnvironmentConfig?` | 否 | `null` | 自定义 AI 服务地址；**优先级高于** `serverEnvironment`。 |
-| `enableDefaultPlaySimultaneousAudio` | `Boolean` | 否 | `true` | 是否由 SDK 自动播放实时同传（`simultaneous_audio`）下行 PCM 音频。设为 `false` 时 SDK 不自动播放；运行时仍可用 `setTranslationAudioPlaybackEnabled` 控制（见 [第 8 节](#实时翻译译文播放开关)）。 |
-| `enableDefaultPlayAgentAudio` | `Boolean` | 否 | `true` | 是否由 SDK 自动播放 AI 助手对话（Agent）下行 PCM 音频。设为 `false` 时 SDK 不自动播放；运行时仍可用 `setAgentAudioPlaybackEnabled` 控制（见 [7.6](#76-ai-对话回复音频播放开关)）。 |
-| `translationAudioStorageDirName` | `String` | 否 | `"transAudioFiles"` | 翻译/对话模式录音文件保存目录名，位于 `context.filesDir` 下。 |
-| `aiDialogueLanguage` | `Int` | 否 | `140` | AI 对话（眼镜按键收音）源语种 ID（`langType`）。默认 `140`（中文）。运行时可用 `setAiDialogueLanguage` 动态修改（见 [7.7](#77-ai-对话源语种)）。 |
-
-**`aiModelType` 可选值**：
-
-| 枚举  | 说明 |
-|------|------|
-| `AiModelVendor.DEFAULT` | 按后台默认配置 |
-| `AiModelVendor.QWEN` | 通义千问 |
-| `AiModelVendor.GPT_5O_MINI` | GPT-5o mini |
-| `AiModelVendor.KIMI_V2` | Kimi v2 |
-
-**`serverEnvironment` 预置环境**：
-
-| 枚举         | 说明 |
-|------------|------|
-| `DEV`      | 开发环境 |
-| `TEST`     | 测试 / 预发布环境 |
-| `CHINA`    | 正式（中国） |
-| `EUROPE`   | 正式（欧洲） |
-| `SINGAPORE` | 正式（新加坡） |
-| `CUSTOM`   | 自定义环境（需分别配置 `baseUrl` 与 `wsUrl`） |
-
-**`customServerEnvironment`（`AiServerEnvironmentConfig`）字段**：
-
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| `baseUrl` | `String` | AI HTTP 服务根地址，如 `https://your-http-host/` |
-| `wsUrl` | `String` | AI 服务地址，如 `wss://your-ws-host` |
-
-> `initializeAiClient` 每次调用会先清理旧 AI 服务连接并重建依赖，但**不会自动重连**；环境切换后需再次调用 `connectAiAssistant(...)` 或 `manualReconnect()`。
+---
 
 ### **GlassesManage 基础 API**
 
@@ -291,7 +254,6 @@ AiAssistantClient.getInstance().initializeAiClient(
 | API | LY | RTK | TB | 说明            |
 |-----|:--:|:---:|:--:|---------------|
 | `initialize` / `isDebug` / `setProductSeries` | ✓ | ✓ | ✓ | 全渠道共用         |
-| `aiUplinkProfile` | ✓ | ✓ | ✓ | 返回渠道 AI 上行参数 |
 | `eventFlow` / `connectionStateFlow` / `currentConnectionState` | ✓ | ✓ | ✓ | 全渠道共用         |
 | `startScanBleDevices` / `stopScanBleDevices` | ✓ | ✓ | ✓ | 全渠道共用         |
 | `connect` / `disConnect` | ✓ | ✓ | ✓ | 解绑时清除配对信息（含经典蓝牙） |
@@ -529,7 +491,7 @@ GlassesManage.reconnectBluetooth()
 
 将眼镜内媒体文件同步到手机，需先完成 BLE 连接。建议**先订阅** `GlassesManage.eventFlow()`，再调用 `syncAllMediaFile()`；进度与结果通过 `FileSyncEvent` 回调。
 
-> **AI 服务**：媒体同步需手机连接眼镜 Wi-Fi 热点，SDK 会在同步开始前**暂停 AI 服务**，在 `FileSyncEvent.BatchDownloadFinished` 或 `FileSyncEvent.Failed` 后**自动恢复 AI 服务**。详见 [7.1.1 占用 Wi-Fi 时的 AI 服务](#711-占用-wi-fi-时的-ai-服务)。
+> **AI 服务**：媒体同步需手机连接眼镜 Wi-Fi 热点，SDK 会在同步开始前**暂停 AI 服务**，在 `FileSyncEvent.BatchDownloadFinished` 或 `FileSyncEvent.Failed` 后**自动恢复 AI 服务**。详见 [AI 文档 §4.1](AI-README.md#41-占用-wi-fi-时的-ai-服务)。
 
 ```kotlin
 // 1. 订阅同步事件（建议在 Application / ViewModel 初始化时注册一次）
@@ -659,460 +621,22 @@ RTK 同步 JPG 时是否执行畸变校正，由 `SdkConfig.deviceLensType` 决�
 
 ---
 
-## **7. AI 助手功能**
-AI 功能包括 **语音对话、图像识别、翻译** 等。可选择两种方式：
+## **7. AI 功能**
 
-### ✅ SDK 内部大模型
-```kotlin
-val aiClient = AiAssistantClient.getInstance()
+AI 能力已按功能模块单独整理（含事件与回调 `data` 用法），请参阅：
 
-// 可选：通过公开 API 自定义环境地址（可在 initializeAiClient 前后调用）
-aiClient.applyServerEnvironmentToGlobals(
-    AiServerEnvironmentConfig(
-        baseUrl = "https://your-http-host/",
-        wsUrl = "wss://your-ws-host"
-    )
-)
+- 中文：[**AI-README.md**](AI-README.md) — AI 对话 / AI 翻译（对话+实时）/ 音视频通话翻译 / 图片翻译
+- English：[**AI-README-en.md**](AI-README-en.md)
 
-// 初始化 AI 运行时
-aiClient.initializeAiClient(
-    AiAgentConfig(
-        context = context,
-        channel = channel,
-        aiModelType = GlassesConstant.AiModelVendor.DEFAULT,
-        serverEnvironment = GlassesConstant.ServerEnvironment.DEV,
-        // 传入后会优先使用该自定义环境；不传则走 serverEnvironment
-        customServerEnvironment = AiServerEnvironmentConfig(
-            baseUrl = "https://your-http-host/",
-            wsUrl = "wss://your-ws-host"
-        ),
-        enableDefaultPlaySimultaneousAudio = true, // true: SDK 自动播放同传音频
-        enableDefaultPlayAgentAudio = true,        // true: SDK 自动播放 Agent 音频
-        translationAudioStorageDirName = GlassesConstant.DEFAULT_TRANS_AUDIO_FILES_STORAGE_DIR,
-        aiDialogueLanguage = 140,                  // AI 对话源语种 langType，默认 140（中文）
-    )
-)
+主文档仅保留设备侧相关交叉引用（如占用 Wi-Fi 时自动暂停 AI、自定义大模型下的 `GlassesManage.startAiAssistant` / `takePicture` 等），实现细节以 AI 文档为准。
 
-// 连接 AI 服务（需在 initializeAiClient 之后调用）
-aiClient.connectAiAssistant(
-    deviceId = deviceId,
-    deviceName = deviceName,
-    deviceModel = deviceModel,
-    clientId = clientId,
-    sk = sk
-)
-
-// 订阅 AI 对话进行中状态
-viewModelScope.launch {
-    aiClient.aiDialogueInProgressFlow().collect { inProgress ->
-        // 更新 UI：对话中指示、禁用重复触发等
-    }
-}
-
-// 统一订阅 AI 事件
-aiClient.aiAgentEventFlow().collect { event ->
-    when (event) {
-        is AgentEvent.AiAssistantConnectState -> Unit
-        is AgentEvent.AiAssistantResult -> {
-            val msg = event.data  // AiChatMessageDTO
-            // msg.question / msg.answer — 流式文本
-            // msg.answerAudioPath — TTS 音频 WAV 本地路径
-            // msg.isFinished — 本轮是否结束
-        }
-        is AiTranslationEvent.AiTranslationResult -> Unit
-        else -> Unit
-    }
-}
-```
-
-`AiAssistantClient` 对宿主 App 暴露的公开方法如下。
-
-### **7.1 生命周期与连接**
-- `AiAssistantClient.getInstance()`：获取单例入口。
-- `applyServerEnvironmentToGlobals(env, localWsUrl)`：同步预置 AI 服务环境；`CUSTOM` 环境下可通过 `localWsUrl` 覆盖默认 AI 服务地址。可在 `initializeAiClient` 前后调用；已连接 AI 服务后切换环境需再次 `connectAiAssistant(...)` 或 `manualReconnect()`。
-- `applyServerEnvironmentToGlobals(serverConfig)`：同步自定义 AI 服务环境，支持上层直接传入 `baseUrl` 和 `wsUrl`。
-- `initializeAiClient(config: AiAgentConfig)`：初始化 AI 客户端运行时，创建 AI 服务 / 图片翻译 / 通话所需依赖。重复调用会先清理旧连接，但**不会自动重连**，需要之后再调用 `connectAiAssistant(...)`。如传入 `customServerEnvironment`，会优先使用该自定义环境。
-- `connectAiAssistant(deviceId, deviceName, deviceModel, clientId, sk)`：建立 AI 助手连接。通常在设备连接完成并拿到鉴权参数后调用。
-- `disconnect()`：断开 AI 服务、结束通话、清理图片翻译与内部协程。页面退出或设备断开时建议调用。
-- `manualReconnect()`：手动触发 AI 服务重连。收到 `AgentEvent.ReconnectRequired` 后可调用。
-
-#### **7.1.1 占用 Wi-Fi 时的 AI 服务**
-
-媒体同步、OTA、直播等流程需要手机切换/连接眼镜 Wi-Fi 热点（SoftAP 或 P2P），会与 AI 服务争用网络。SDK 在 **LY / RTK / TB** 各渠道内统一处理，**无需 App 手动暂停或恢复**：
-
-| 阶段 | SDK 行为 |
-|------|----------|
-| 流程开始 | **暂停 AI 服务**（结束当前 AI 会话并断开连接，短暂等待网络释放） |
-| 流程正常结束 | 收到 `FileSyncEvent.BatchDownloadFinished` / `OTAEvent.Success` / `LiveEvent.RespStop` 等成功结束事件，或 `FileSyncEvent.Failed` / `OTAEvent.Failed` / `LiveEvent.Failed` 等失败事件 → **自动恢复 AI 服务** |
-| 眼镜 BLE 断开 | 取消暂停标记，**不**主动恢复 AI 服务（由 `disconnect()` 等上层逻辑处理） |
-
-**会自动暂停 / 恢复 AI 服务的 GlassesManage API**：
-
-| API | LY | RTK | TB |
-|-----|----|----|-----|
-| `syncAllMediaFile()` | ✓ | ✓ | ✓ |
-| `startOTA()` / `startRtkOta()` | ✓ | ✓ | ✓（FIRMWARE） |
-| `startLiveStreaming()` | ✓ | ✓ | ✓ |
-| `stopLiveStreaming()` | ✓ | ✓ | ✓ |
-
-**若 App 自行实现占用 Wi-Fi 的流程**，可手动控制：
-
-| 时机 | 说明 | 对应 API |
-|------|------|----------|
-| 开始前 | 暂停 AI 服务 | `AiAssistantClient.beginWifiExclusiveSession()` |
-| 结束后 | 恢复 AI 服务 | `AiAssistantClient.endWifiExclusiveSession()` |
-
-```kotlin
-val ai = AiAssistantClient.getInstance()
-// 自定义占用 Wi-Fi 的流程前 — 暂停 AI 服务
-runBlocking { ai.beginWifiExclusiveSession() }
-// ... 你的 Wi-Fi 业务 ...
-// 流程结束 — 恢复 AI 服务
-ai.endWifiExclusiveSession()
-```
-
-> 若 App 尚未调用过 `connectAiAssistant(...)`，恢复 AI 服务时不会有可重连的会话。  
-> 旧接口 `suspendConnectionTemporarily()` / `resumeSuspendedConnection()` 仍可用，效果分别等同于暂停 / 恢复 AI 服务。
-
-### **7.2 事件订阅**
-- `aiAgentEventFlow(): Flow<AiAgentBase>`：统一输出 AI 相关事件。
-- `aiDialogueInProgressFlow(): StateFlow<Boolean>`：AI 对话进行中状态（眼镜录音 / 等待回复 / TTS 下发）。设备开始录音或收到 TTS `start` 时为 `true`；收到 TTS `stop`、设备取消/打断录音、断开连接时为 `false`。可用于 UI 展示「对话中」指示或禁用重复触发。
-
-  Demo：`AiAssistantViewModel.observeAiDialogueState()` 订阅该 Flow 并更新 UI 状态。
-
-- 可能收到的事件类型：
-  `AgentEvent`（连接状态、聊天结果、识图 / 图片翻译结果、音视频通话状态等）、
-  `AiTranslationEvent`（翻译文本结果 / 失败）、
-  `LocalVadEvent`（本地 VAD 状态）。
-
-> **`AgentAudioEvent` 已废弃**：该事件类型已从 SDK 移除，不再通过 `aiAgentEventFlow()` 下发。下行 PCM 由 SDK 内部播放（受 `enableDefaultPlaySimultaneousAudio` / `enableDefaultPlayAgentAudio` 及运行时播放开关控制）。
-
-#### **AiChatMessageDTO**（`AgentEvent.AiAssistantResult` 载荷）
-
-`AgentEvent.AiAssistantResult.data` 为 `AiChatMessageDTO`，在一次对话轮次中可能多次下发（流式文本 / 最终结果）。
-
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| `id` | `String?` | 消息 ID（STT / TTS 音频完成时下发，用于关联同轮问答） |
-| `question` | `Any?` | 用户输入：文本、图片路径等 |
-| `answer` | `Any?` | AI 回复文本（流式追加） |
-| `questionType` | `AiContentType` | 问题内容类型 |
-| `answerType` | `AiContentType` | 回复内容类型 |
-| `answerAudioPath` | `String?` | 本轮 TTS 音频 WAV 本地路径（TTS `stop` 或打断/新一轮时下发） |
-| `isFinished` | `Boolean` | 本轮是否结束（STT 识别完成、TTS `stop`、识图完成等时为 `true`） |
-
-`AiContentType` 枚举：`NONE`、`TEXT`、`IMAGE_PATH`、`IMAGE_FILE`、`AUDIO_DATA`。
-
-若初始化时仍允许 SDK 播放同传音频，但需要在**单次实时翻译会话内**让用户开关译文播放，可使用 `setTranslationAudioPlaybackEnabled` / `isTranslationAudioPlaybackEnabled`（见 [8. 实时翻译译文播放开关](#实时翻译译文播放开关)）。
-
-若初始化时仍允许 SDK 播放 AI 对话音频，但需要在**对话进行中**让用户开关回复播放，可使用 `setAgentAudioPlaybackEnabled` / `isAgentAudioPlaybackEnabled`（见 [7.6](#76-ai-对话回复音频播放开关)）。
-
-### **7.3 AI 翻译相关方法**
-
-> **权限**：App 侧使用手机麦克风采集并调用 `startReceivingAudio` / `sendReceivingAudioData` 时，需向用户申请并持有 `android.permission.RECORD_AUDIO`（录音权限）。未授权会导致无法采集上行音频。
-
-#### 语种获取
-
-| 场景 | 获取方式 | 说明 |
-|------|----------|------|
-| **语音 / 对话 / 同传翻译** | 使用整数 `langType` | SDK **未提供**单独的「翻译语种列表」HTTP 接口；`startAiTranslation(from, toList, ...)`、`startReceivingAudio(mode, language)` 中的 `from` / `language` / `toList` 均为后台约定的语种 ID（如 Demo 默认源语 `140`、目标语 `47`）。语种名称与列表由宿主维护，可参考 Demo `assets/languages.json`（字段：`name`、`nameEn`、`langType`、`code`）。 |
-| **图片翻译** | `getImageTransLangList(serviceType)` | 按服务商拉取支持语种，结果见 `AgentEvent.ImageTransLangListResult`（含 `requestId`）。 |
-
-**图片翻译 — 获取语种列表**
-
-> **requestId 关联**：`getImageTransLangList`、`imageTrans`、`getVoiceRoomParams` 均为 HTTP 接口型请求，通过 `aiAgentEventFlow()` 异步回调。多次调用或退出 UI 后重新进入时，可能收到上一次请求的结果。调用方应保存 API 返回的 `requestId`，并在事件回调中校验 `event.requestId` 是否匹配；SDK 也会在发起新请求时取消同类型的上一次请求。
-
-```kotlin
-val aiClient = AiAssistantClient.getInstance()
-var pendingLangListRequestId: Long? = null
-
-viewModelScope.launch {
-    aiClient.aiAgentEventFlow().collect { event ->
-        when (event) {
-            is AgentEvent.ImageTransLangListResult -> {
-                if (event.requestId != pendingLangListRequestId) return@collect
-                event.languageList.forEach { lang ->
-                    // lang.langType   — 语种 ID（用于 imageTrans 入参）
-                    // lang.name       — 中文名
-                    // lang.nameEn     — 英文名
-                    // lang.code       — 如 zh-CN
-                    // lang.supportSource / lang.supportTarget — 是否可作源/目标语
-                }
-            }
-            else -> Unit
-        }
-    }
-}
-
-// serviceType：VOLC_ENGINE(1) / ALIYUN(2) / MICROSOFT(3) / OPEN_AI(4)
-// 返回值 Long 为本次 requestId，未初始化 AI 客户端时返回 0
-pendingLangListRequestId =
-    aiClient.getImageTransLangList(GlassesConstant.ImageTranslateServerType.VOLC_ENGINE)
-```
-
-`LanguageResult` 字段：`name`、`nameEn`、`langType`、`code`、`supportSource`、`supportTarget`。
-
-- `startAiTranslation(from, toList, reqId, audioFormat)`：创建一次翻译会话。App 自己采集手机麦克风时，`audioFormat` 使用 `GlassesConstant.AI_TRANSLATION_AUDIO_FORMAT_RAW_PCM`。
-- `startReceivingAudio(mode, language)`：开始向 AI 服务发送录音。常用 `mode`：
-  `GlassesConstant.AI_ASSISTANT_TYPE_LISTEN_MODE_TRANSLATION`（对话翻译）、
-  `GlassesConstant.AI_ASSISTANT_TYPE_LISTEN_MODE_SIMULTANEOUS_INTERPRETATION`（实时同传）。
-- `sendReceivingAudioData(mode, byteArray)`：持续发送 16k、单声道 PCM；SDK 会在内部完成降噪、AGC 等上行预处理，宿主无需自行处理。
-- `pauseListening()`：暂停当前监听，适合实时同传的“暂停但不结束会话”场景。
-- `stopReceivingAudio(mode)`：发送 stop 并结束当前模式的录音流程。
-- `cancelReceivingAudio()`：直接中断当前录音 / AI 收音流程。
-- `setTranslationAudioPlaybackEnabled(enabled)`：启用或禁用**实时翻译**下行音频的 SDK 自动播放（主要作用于同传 `simultaneous_audio`）。禁用后会立即停止当前播放并清空待播队列，但**不会**中断翻译会话。
-- `isTranslationAudioPlaybackEnabled()`：查询当前是否启用实时翻译下行播放。未初始化 AI 客户端时返回 `true`。
-
-### **7.4 图片翻译相关方法**
-- `getImageTransLangList(serviceType): Long`：获取指定图片翻译服务商支持的语言列表。`serviceType` 可选 `VOLC_ENGINE`、`ALIYUN`、`MICROSOFT`、`OPEN_AI`。返回本次 `requestId`；结果通过 `AgentEvent.ImageTransLangListResult(requestId, languageList)` 回调。
-- `imageTrans(targetImage, sourceLanguage, targetLanguage): Long`：上传图片并请求图片翻译。返回本次 `requestId`；结果通过 `AgentEvent.ImageTransResult(requestId, imageBase64)` / `AgentEvent.ImageTransFailEvent(requestId, code, msg)` 回调。
-
-```kotlin
-var pendingImageTransRequestId: Long? = null
-
-pendingImageTransRequestId = aiClient.imageTrans(
-    targetImage = imageFile,
-    sourceLanguage = srcLangType,
-    targetLanguage = targetLangType,
-)
-
-// 在 aiAgentEventFlow() 中：
-is AgentEvent.ImageTransResult -> {
-    if (event.requestId != pendingImageTransRequestId) return@collect
-    // 处理翻译结果
-}
-is AgentEvent.ImageTransFailEvent -> {
-    if (event.requestId != pendingImageTransRequestId) return@collect
-    // 处理失败
-}
-```
-
-### **7.5 语音房间 / 音视频通话相关方法**
-
-> **权限**：音视频通话需使用麦克风（及视频通话时的相机），请申请 `android.permission.RECORD_AUDIO`；视频通话另需 `android.permission.CAMERA`。
-
-- `getVoiceRoomParams(lang, target, type, appId, mac): Long`：获取即构语音房间参数。返回本次 `requestId`；结果通过 `AgentEvent.VoiceRoomParamsEvent(requestId, params)` / `AgentEvent.VoiceRoomParamsFailEvent(requestId, code, msg)` 回调。上层应校验 `event.requestId` 后再调用 `startCall(...)`。
-  `type = 1` 表示视频通话，`type = 2` 表示语音通话。
-- `startCall(appID, token, roomID, streamId, userID, isVideo, local, remote)`：开始音视频通话。
-- `updateLocalView(view)`：更新本地预览 `TextureView`。
-- `updateRemoteView(view)`：更新远端画面 `TextureView`。
-- `endCall()`：挂断通话。
-- `muteMicrophone(mute)`：静音 / 取消静音麦克风。
-- `enableSpeaker(enable)`：切换扬声器播放。
-- `muteVideo(mute)`：关闭 / 打开本地视频采集。
-- `switchCamera(useFront)`：切换前后摄像头。
-- `setPlayVolume(volume)`：设置通话播放音量。
-
-### **7.6 AI 对话回复音频播放开关**
-
-适用于 AI 助手语音对话（TTS / `agent_audio`）场景：在对话进行中允许用户临时关闭 / 打开 SDK 自动播放回复音频，无需修改 `AiAgentConfig.enableDefaultPlayAgentAudio`。
-
-**行为说明**：
-
-| 项 | 说明 |
-|----|------|
-| 控制范围 | TTS 二进制流与 `agent_audio` 的 SDK 自动播放 |
-| 与初始化配置关系 | 仍受 `enableDefaultPlayAgentAudio = false` 约束；该配置为 `false` 时，运行时开关无法开启播放 |
-| 禁用后 | 不再自动播放；音频文件写入不受影响（`AgentAudioEvent` 已废弃，无 PCM 事件回调） |
-| 禁用时机 | 若当前有 TTS 流在播，会立即停止播放并清空待播队列，但**不会**中断 AI 对话会话 |
-
-- `setAgentAudioPlaybackEnabled(enabled)`：启用或禁用 AI 对话下行音频的 SDK 自动播放。
-- `isAgentAudioPlaybackEnabled()`：查询当前是否启用 AI 对话下行播放。未初始化 AI 客户端时返回 `true`。
-
-```kotlin
-val aiClient = AiAssistantClient.getInstance()
-
-// 用户关闭 AI 回复播放（立即生效）
-aiClient.setAgentAudioPlaybackEnabled(false)
-
-// 查询当前状态
-val playbackEnabled = aiClient.isAgentAudioPlaybackEnabled()
-
-// 恢复 SDK 自动播放
-aiClient.setAgentAudioPlaybackEnabled(true)
-```
-
-Demo：`AiAssistantScreen` 底部提供「回复播放：开 / 关」切换按钮，对应 `AiAssistantViewModel.toggleAgentAudioPlayback()`。
-
-### **7.7 AI 对话源语种**
-
-眼镜按键触发 AI 对话收音时，SDK 会使用配置中的源语种 ID（`langType`）调用 `startReceivingAudio`。可在初始化时通过 `AiAgentConfig.aiDialogueLanguage` 指定，也可在运行时动态修改。
-
-| 项 | 说明 |
-|----|------|
-| 作用范围 | 眼镜侧 AI 对话（按键收音），不含 App 主动调用的翻译 / 同传 |
-| 取值 | 后台约定的语种 ID（`langType`），如 `140`（中文）；可参考 Demo `assets/languages.json` |
-| 生效时机 | `setAiDialogueLanguage` 立即更新配置；若 AI 服务已连接，会 disconnect+release 并重建 WebSocket，让服务端重新 HELLO 初始化，同时清空本地会话状态。**重建完成并收到 HELLO 之前禁止开听**（眼镜按键会直接停麦）；可用 `isListenBlockedByWsReconnect()` 查询 |
-
-- `setAiDialogueLanguage(language)`：动态设置 AI 对话源语种，无需重新 `initializeAiClient`；已连接时会释放并重建 WS（本地 listen/TTS/识图等状态一并初始化），重建期间禁止 `startReceivingAudio` / 眼镜开听。
-- `getAiDialogueLanguage()`：查询当前 AI 对话源语种；未初始化 AI 客户端时返回默认值 `140`。
-- `isListenBlockedByWsReconnect()`：切语种后的 WS 重建是否仍在进行（HELLO 未就绪）；为 `true` 时请勿开听。
-
-```kotlin
-val aiClient = AiAssistantClient.getInstance()
-
-// 初始化时指定
-aiClient.initializeAiClient(
-    AiAgentConfig(
-        context = context,
-        channel = channel,
-        aiDialogueLanguage = 140, // 中文
-    )
-)
-
-// 运行时切换（例如用户在设置页更改对话语种）
-aiClient.setAiDialogueLanguage(47) // 英文等
-
-val currentLang = aiClient.getAiDialogueLanguage()
-```
-
-## **8. AI 翻译**
-
-请参考 Demo 中 `translate` 相关实现。
-
-> **权限**：使用手机麦克风做翻译前，请申请 `android.permission.RECORD_AUDIO`。可在进入翻译页时请求权限，拒绝后应提示用户无法录音。
-
-### 语种获取（语音翻译）
-
-语音翻译、对话翻译、实时同传均使用 **语种 ID（`langType`，Int）**，不是 locale 字符串。SDK 不提供在线拉取语音翻译语种表的 API，接入方需自行维护语种列表（名称展示 + `langType` 传参）。
-
-Demo 做法：从 `assets/languages.json` 加载列表，结构示例：
-
-```json
-{
-  "name": "中文",
-  "nameEn": "Chinese",
-  "langType": 140,
-  "code": "zh-CN"
-}
-```
-
-```kotlin
-// 读取本地语种表（与 Demo 一致）
-val languages: List<Language> /* 解析 languages.json */
-
-val srcLangType = languages.find { it.code == "zh-CN" }?.langType ?: 140
-val targetLangType = languages.find { it.code == "en-US" }?.langType ?: 47
-
-aiClient.startAiTranslation(
-    from = srcLangType,
-    toList = listOf(targetLangType),
-    reqId = System.currentTimeMillis(),
-    audioFormat = GlassesConstant.AI_TRANSLATION_AUDIO_FORMAT_RAW_PCM,
-)
-aiClient.startReceivingAudio(
-    mode = GlassesConstant.AI_ASSISTANT_TYPE_LISTEN_MODE_TRANSLATION,
-    language = srcLangType, // 源语 ID，与 from 一致
-)
-```
-
-常用 `mode`：
-
-| 常量 | 场景 |
-|------|------|
-| `AI_ASSISTANT_TYPE_LISTEN_MODE_TRANSLATION` | 对话翻译 |
-| `AI_ASSISTANT_TYPE_LISTEN_MODE_SIMULTANEOUS_INTERPRETATION` | 实时同传 |
-
-> 图片翻译的语种请走 `getImageTransLangList`，见 [7.3](#73-ai-翻译相关方法) 与 [7.4](#74-图片翻译相关方法)。
-
-App 侧主动采集手机麦克风做翻译时，建议按下面流程调用：
-
-```kotlin
-val aiClient = AiAssistantClient.getInstance()
-val mode = GlassesConstant.AI_ASSISTANT_TYPE_LISTEN_MODE_TRANSLATION
-val requestId = System.currentTimeMillis()
-
-aiClient.startAiTranslation(
-    from = 140,
-    toList = listOf(47),
-    reqId = requestId,
-    audioFormat = GlassesConstant.AI_TRANSLATION_AUDIO_FORMAT_RAW_PCM
-)
-
-aiClient.startReceivingAudio(mode, 140)
-
-audioRecorderPcmFlow.collect { pcm ->
-    aiClient.sendReceivingAudioData(mode = mode, byteArray = pcm)
-}
-
-aiClient.stopReceivingAudio(mode)
-```
-
-调用说明：
-- `startAiTranslation(...)`：先创建翻译会话，再开始送音频。
-- `startReceivingAudio(mode, language)`：进入翻译监听状态，`language` 为源语言。
-- `sendReceivingAudioData(...)`：持续发送 16k、单声道 PCM 原始数据
-- `pauseListening()`：实时同传场景中，暂停但不结束整场会话。
-- `stopReceivingAudio(mode)`：正常结束当前翻译会话。
-- `cancelReceivingAudio()`：异常中断当前收音流程。
-
-#### 实时翻译译文播放开关
-
-适用于 `AI_ASSISTANT_TYPE_LISTEN_MODE_SIMULTANEOUS_INTERPRETATION`（实时同传）场景：在会话进行中允许用户临时关闭 / 打开 SDK 自动播放译文，无需修改 `AiAgentConfig.enableDefaultPlaySimultaneousAudio`。
-
-**行为说明**：
-
-| 项 | 说明 |
-|----|------|
-| 控制范围 | 同传下行 `simultaneous_audio` 的 SDK 自动播放 |
-| 与初始化配置关系 | 仍受 `enableDefaultPlaySimultaneousAudio = false` 约束；该配置为 `false` 时，运行时开关无法开启播放 |
-| 禁用后 | 不再自动播放（`AgentAudioEvent` 已废弃，无 PCM 事件回调） |
-
-```kotlin
-val aiClient = AiAssistantClient.getInstance()
-
-// 用户关闭译文播放（立即生效）
-aiClient.setTranslationAudioPlaybackEnabled(false)
-
-// 查询当前状态
-val playbackEnabled = aiClient.isTranslationAudioPlaybackEnabled()
-
-// 开始新一轮实时翻译
-aiClient.startAiTranslation(
-    from = 140,
-    toList = listOf(47),
-    reqId = System.currentTimeMillis(),
-    audioFormat = GlassesConstant.AI_TRANSLATION_AUDIO_FORMAT_RAW_PCM,
-)
-aiClient.startReceivingAudio(
-    GlassesConstant.AI_ASSISTANT_TYPE_LISTEN_MODE_SIMULTANEOUS_INTERPRETATION,
-    language = 140,
-)
-```
-
-Demo：`TranslatorScreen` 实时翻译底部控制区提供「译文播放：开 / 关」切换按钮，对应 `TranslatorViewModel.toggleTranslationAudioPlayback()`。
-
-**实时翻译边录边播（回声与路由）**：SDK 在 `AI_ASSISTANT_TYPE_LISTEN_MODE_SIMULTANEOUS_INTERPRETATION` 下按输出设备自动分支（`TranslationSimultaneousAudioPolicy`）：
-- **蓝牙 A2DP / 有线耳机**：`MODE_NORMAL` + `VOICE_RECOGNITION`，下行优先 A2DP（`simultaneousInterpretationPlaybackPreferA2dp = true` 时）。
-- **手机扬声器**：`MODE_IN_COMMUNICATION` + `VOICE_COMMUNICATION`，App 调用 `bindSimultaneousInterpretationCaptureSession(audioSessionId)` 与 SDK共享 session，并启用硬件 `AcousticEchoCanceler`，减轻译文被麦克风回录。
-
-Demo：`AiAssistantClient.resolveSimultaneousInterpretationAudioPolicy()` → `StreamAudioRecorder.start(simultaneousPolicy=...)`，扬声器场景下绑定 session；暂停/结束录音时 `clearSimultaneousInterpretationCaptureSession()`。
-
-**回调订阅**（`AiAssistantClient.aiAgentEventFlow()`）：
-
-| 类型 | 事件 | 说明 |
-|------|------|------|
-| `AiTranslationEvent` | `AiTranslationResult` | 翻译文本结果 |
-| | `Failed` | 翻译失败 |
-| `AgentEvent` | `AiAssistantConnectState` | AI 服务连接状态 |
-
-### ✅ 自定义大模型（App 自己实现）
-如需开启自定义模式 请联系开发人员。
-
-- **GlassesManage.startAiAssistant**：开始录音 
-  - AudioStateEvent.ReceivingAudioData：持续接收录音数据
-- **GlassesManage.stopAiAssistant()**：停止录音
-- **GlassesManage.interruptAiAssistant()**：打断录音
-- **GlassesManage.takePicture(true)**：AI 识图（`takePhotoOnly = true` 时图片回传 App；`false` 时保存到眼镜，见 [11.8 设备侧采集与拍照](#8️⃣-设备侧采集与拍照)）
-  - 回调事件：`CmdResultEvent.ImageData` / `CmdResultEvent.ImageFile`
 ---
 
-
-## **9. 直播**
+## **8. 直播**
 
 眼镜端发起 RTSP 推流，手机 App 订阅 `LiveEvent` 获取地址后可本地预览，或二次推流到第三方平台（Demo 支持抖音直播）。
 
-> **AI 服务**：开播前 SDK 会**暂停 AI 服务**；`stopLiveStreaming()`、直播失败（`LiveEvent.Failed` / `PreviewFailed` / `Disconnected`）或停止（`RespStop`）后**自动恢复 AI 服务**。详见 [7.1.1](#711-占用-wi-fi-时的-ai-服务)。
+> **AI 服务**：开播前 SDK 会**暂停 AI 服务**；`stopLiveStreaming()`、直播失败（`LiveEvent.Failed` / `PreviewFailed` / `Disconnected`）或停止（`RespStop`）后**自动恢复 AI 服务**。详见 [AI 文档 §4.1](AI-README.md#41-占用-wi-fi-时的-ai-服务)。
 
 **前置条件**（`startLiveStreaming` 会在 SDK 内校验，不满足则回调 `LiveEvent.Failed`）：
 
@@ -1121,6 +645,14 @@ Demo：`AiAssistantClient.resolveSimultaneousInterpretationAudioPolicy()` → `S
 - 手机 **蜂窝数据已开启**（3214；检测系统开关，非当前 Internet 连接；用于第三方平台 API / RTMP 推流）
 
 部分渠道还需 Wi‑Fi / 定位相关权限（参考 Demo 直播页）。
+
+> **系统网络切换提醒（重要）**  
+> 直播依赖手机连接眼镜 Wi‑Fi 热点（SoftAP）拉流，同时可能经蜂窝访问第三方平台。若系统开启智能网络切换，Android 可能在直播过程中主动切网，导致预览/推流断连。  
+> 请引导用户（或在接入说明中写明）关闭手机上类似设置，例如：  
+> - **WLAN+** / **智能多网络切换** / **智能双通道**  
+> - **WLAN 安全检测** / **WLAN 助理**  
+> - **WLAN 不可上网时自动切换到移动数据** / **网络加速** 等  
+> 具体名称因厂商（华为 / 小米 / OPPO / vivo / 三星等）与系统版本而异，设置路径通常在「WLAN / 移动网络 / 更多连接」相关菜单。开播前建议确认上述能力已关闭，以降低系统主动切网导致的断播概率。
 
 ```kotlin
 viewModelScope.launch {
@@ -1211,6 +743,8 @@ GlassesManage.stopLiveStreaming()
 | `startContentRes` | `@StringRes Int` | 直播服务启动时通知正文 |
 | `networkDisconnectedTitleRes` | `@StringRes Int` | 网络断开时通知标题 |
 | `networkDisconnectedContentRes` | `@StringRes Int` | 网络断开时通知正文 |
+| `pushFailedTitleRes` | `@StringRes Int` | 推流失败（如直播间被平台关闭）时通知标题（RTK smartwear ≥ 1.8.73） |
+| `pushFailedContentRes` | `@StringRes Int` | 推流失败时通知正文（RTK smartwear ≥ 1.8.73） |
 | `stopActionRes` | `@StringRes Int` | 通知栏停止直播操作按钮文案 |
 | `smallIconRes` | `@DrawableRes Int` | 通知小图标 |
 
@@ -1251,11 +785,11 @@ when (event) {
 }
 ```
 
-完整错误码表见 [第 13 节 · RTK SoftAP 共用（3501–3505）](#-rtk-softap-共用错误3501---3505) 与 [直播错误（3201–3214）](#-直播错误3201---3214)。
+完整错误码表见 [第 12 节 · RTK SoftAP 共用（3501–3505）](#-rtk-softap-共用错误3501---3505) 与 [直播错误（3201–3214）](#-直播错误3201---3214)。
 
 > Demo：`LiveViewModel` + `LiveScreen`。直播能力与参数解析因渠道（LY / RTK / TB 等）及固件版本而异，接入前请确认 `SdkConfig.channel`。
 
-### **9.6 直播体验配置（抖音 Key / 包名 / 签名）**
+### **8.6 直播体验配置（抖音 Key / 包名 / 签名）**
 
 Demo（`app` 模块）对接抖音直播时，需使用与抖音开放平台登记一致的 **应用包名、签名（jks）以及抖音 appId / appName**。为方便在不同客户/渠道间快速切换，这些参数已统一抽离到根目录的本地配置文件 `douyin.properties`，**改配置即可切换，无需改动任何代码**。
 
@@ -1294,13 +828,13 @@ Demo（`app` 模块）对接抖音直播时，需使用与抖音开放平台登�
 
 ---
 
-## **10. SDK Flow 流监听**
+## **9. SDK Flow 流监听**
 
 > **连接状态**：BLE/BT 请优先使用 `GlassesManage.connectionStateFlow()`（见 [第 5.2 节](#52-订阅-ble--bt-连接状态推荐)），本节 `eventFlow` 主要覆盖扫描、同步、OTA、指令等业务事件。
 
 ### **通用 - CmdResultEvent**
 - 设备设置、设备状态、媒体文件、电量、按键动作等结果请关注 `CmdResultEvent` 子类
-- RTK 高清拍照参数：`CmdResultEvent.LifePhotoConfigResult(success)`（见 [11.8](#8️⃣-设备侧采集与拍照)）
+- RTK 高清拍照参数：`CmdResultEvent.LifePhotoConfigResult(success)`（见 [10.8](#8️⃣-设备侧采集与拍照)）
 - RTK SoftAP 名称/密码：`CmdResultEvent.WifiApConfigResult(success)`（见下方 [§6 RTK](#rtk-方案)）
 
 
@@ -1327,7 +861,8 @@ Demo（`app` 模块）对接抖音直播时，需使用与抖音开放平台登�
 手动重连 BT：**LY / TB** 见 [第 5.3 节](#53-手动重连-btly--tb)。
 
 ### **③ 音频流 - AudioStateEvent**
-- 参考 Demo
+- 自定义大模型请参阅 **[眼镜原始音频流说明](Glasses-Raw-Audio-Stream.md)**（LY / TB / RTK 原始格式、采样率、声道、帧大小）
+- 亦可参考 Demo
 
 ### **④ 同步媒体文件 - FileSyncEvent**
 - `ConnectSuccess`：Wi-Fi 连接成功
@@ -1338,28 +873,9 @@ Demo（`app` 模块）对接抖音直播时，需使用与抖音开放平台登�
 - `BatchDownloadFinished(successCount, totalFileCount)`：整批下载结束
 - `Failed(reason, code)`：同步失败
 
-### **⑤ AI 助手 - AgentEvent**
-- `AgentEvent.AiAssistantConnectState`：AI 服务连接状态
-- `AgentEvent.AiAssistantResult`：AI 聊天结果，载荷为 `AiChatMessageDTO`（见 [7.2](#72-事件订阅)）
-- `AgentEvent.AiScheduleResult`：日程类 MCP 返回
-- `AgentEvent.ImageTransLangListResult(requestId, languageList)`：图片翻译语言列表
-- `AgentEvent.ImageTransResult(requestId, imageBase64)`：图片翻译结果
-- `AgentEvent.ImageTransFailEvent(requestId, code, msg)`：图片翻译失败
-- `AgentEvent.VoiceRoomParamsEvent(requestId, params)` / `VoiceRoomParamsFailEvent(requestId, code, msg)`：语音房间参数获取结果
-- `AgentEvent.CallConnected` / `CallDisconnected`：通话接通 / 断开
-- `AgentEvent.RemoteVideoStateEvent`：远端视频开关状态
-- `AgentEvent.RemoteLanguageEvent`：远端语种变化
-- `AgentEvent.ReconnectRequired`：需要业务侧主动重连
-- `AgentEvent.DeviceAiServiceError`：设备侧 AI 服务错误
----
+### **⑤～⑦ AI 相关事件**
 
-### **⑥ AI 翻译 - AiTranslationEvent**
-- `AiTranslationResult`：大模型返回翻译结果
-- `Failed`：错误
-
-### **⑦ AI 音频流 - AgentAudioEvent（已废弃）**
-
-> **`AgentAudioEvent` 已废弃并从 SDK 移除**，不再通过 `aiAgentEventFlow()` 下发。下行音频由 SDK 内部播放，受 `enableDefaultPlaySimultaneousAudio` / `enableDefaultPlayAgentAudio` 及 `setTranslationAudioPlaybackEnabled` / `setAgentAudioPlaybackEnabled` 控制；文本与业务结果仍通过 `AgentEvent` / `AiTranslationEvent` 回调。
+AI 助手 / 翻译 / 音频事件（`AgentEvent`、`AiTranslationEvent` 等）通过 `AiAssistantClient.aiAgentEventFlow()` 订阅，详见 **[AI 文档 §10](AI-README.md#10-ai-事件订阅汇总)**。
 
 ---
 ### **⑧ OTA 升级 - OTAEvent**
@@ -1433,9 +949,9 @@ when (event) {
 
 ---
 
-## **11. 眼镜设置功能**
+## **10. 眼镜设置功能**
 SDK 通过 `GlassesManage` 提供眼镜参数读取与修改（LED、手势、佩戴检测、音量、时间等）。  
-**结果回传**：请在 `GlassesManage.eventFlow()` 中收集 `GlassesEvent`，关注 `CmdResultEvent` 子类（与 [第 10 节](#10-sdk-flow-流监听) 一致）。
+**结果回传**：请在 `GlassesManage.eventFlow()` 中收集 `GlassesEvent`，关注 `CmdResultEvent` 子类（与 [第 9 节](#9-sdk-flow-流监听) 一致）。
 
 ---
 
@@ -1602,17 +1118,17 @@ GlassesManage.setLifePhotoConfig(
 **回调事件**：
 - 拍照 / 识图：`CmdResultEvent.ImageData`（原始字节）或 `CmdResultEvent.ImageFile`（本地文件路径，视渠道而定）
 - 高清拍照参数（RTK）：`CmdResultEvent.LifePhotoConfigResult(success)`
-- 自定义大模型录音：见 [8. 自定义大模型](#-自定义大模型app-自己实现) 中的 `AudioStateEvent`
+- 自定义大模型录音：见 [眼镜原始音频流说明](Glasses-Raw-Audio-Stream.md)（LY / TB / RTK 格式、采样率、帧大小）与 `AudioStateEvent`
 
 > 分辨率须为传感器实际支持值；`jpegQuality` 范围 1–9；`rotationDegrees` 仅 0/90/180/270。LY / TB 调用为空操作。
 
 ---
 
-## **12. OTA 升级**
+## **11. OTA 升级**
 
-需先完成 BLE 连接。升级过程通过 `GlassesManage.eventFlow()` 回调 `OTAEvent`（见 [第 10 节](#-ota-升级---otaevent)）。
+需先完成 BLE 连接。升级过程通过 `GlassesManage.eventFlow()` 回调 `OTAEvent`（见 [第 9 节](#-ota-升级---otaevent)）。
 
-> **AI 服务**：OTA 开始前 SDK 会**暂停 AI 服务**；收到 `OTAEvent.Success` / `Failed` / `Cancelled` 后**自动恢复 AI 服务**。与媒体同步、直播等占用 Wi-Fi 的流程相同，详见 [7.1.1](#711-占用-wi-fi-时的-ai-服务)。
+> **AI 服务**：OTA 开始前 SDK 会**暂停 AI 服务**；收到 `OTAEvent.Success` / `Failed` / `Cancelled` 后**自动恢复 AI 服务**。与媒体同步、直播等占用 Wi-Fi 的流程相同，详见 [AI 文档 §4.1](AI-README.md#41-占用-wi-fi-时的-ai-服务)。
 
 ```kotlin
 GlassesManage.startOTA(
@@ -1687,13 +1203,13 @@ BT 与 WiFi 至少传入一种；也可同时升级。仅升 BT 时 `wifiZipPath
 2. 若含 BT：推送 BT bin（此阶段不汇报 `OTAEvent.Progress`）
 3. 若含 WiFi：SDK 解压压缩包，按 `ota.json` 依次推送各 WiFi 包（`OTAStage.VERIFY` 进度）
 4. DFU 统一激活（`OTAStage.OTA` 进度）
-5. 结果经 `GlassesManage.eventFlow()` 回调 `OTAEvent`（见 [第 10 节](#-ota-升级---otaevent)）
+5. 结果经 `GlassesManage.eventFlow()` 回调 `OTAEvent`（见 [第 9 节](#-ota-升级---otaevent)）
 
 **RTK OTA 错误码**：包校验 / DFU 流程见 [36xx](#-rtk-ota--dfu-错误3601---3608)；开启 SoftAP / 连热点见 [35xx](#-rtk-softap-共用错误3501---3505)（与直播、媒体同步共用）。默认文案：`RtkOtaErrors.defaultReason(code)`、`RtkSoftApErrors.defaultReason(code)`。
 
 Demo：`UpdateViewModel.startRtkOtaUpgrade()` 支持分别选择 BT bin 与 WiFi zip，或二者同时升级。
 
-## **13. 错误码说明**
+## **12. 错误码说明**
 
 错误码定义于 `GlassesConstant`；业务回调中通过 `event.code` 或 `Failed(reason, code)` 获取。
 
@@ -1782,11 +1298,8 @@ Demo：`UpdateViewModel.startRtkOtaUpgrade()` 支持分别选择 BT bin 与 WiFi
 | 4005 | ERROR_CODE_OTA_FILE_OR_VERSION_INVALID | OTA 资源或版本号无效（LY ISP OTA） |
 
 ### 🤖 AI 助手错误（500001 - 500003）
-| 错误码 | 名称 | 描述 |
-|:-------:|:------|:------|
-| 500001 | AIErrorCode.DUPLICATE_CONNECTION | 重复连接 |
-| 500002 | AIErrorCode.DEVICE_NOT_AUTHORIZED | 设备未授权 |
-| 500003 | AIErrorCode.SERVER_KEY_ERROR | 服务器密钥错误 |
+
+详见 **[AI 文档 §11](AI-README.md#11-错误码)**。
 
 ### 📺 直播错误（3201 - 3214）
 

@@ -152,12 +152,13 @@ class AppStartupReconnectManager @Inject constructor(
         return environment
     }
 
-    private fun initGlassesSdkAndAiClient(
+    private suspend fun initGlassesSdkAndAiClient(
         environment: GlassesConstant.ServerEnvironment,
         channel: GlassesConstant.ChannelType,
         deviceName: String?,
     ) {
-        val productSeries = ProductSeriesResolver.fromDeviceName(deviceName)
+        val adaptationNumber = bluetoothDataManager.getBluetoothAdapter()
+        val productSeries = ProductSeriesResolver.resolve(deviceName, adaptationNumber)
         LogUtils.i(
             "AppStartupReconnect",
             "init SDK productSeries=${productSeries.code} deviceName=$deviceName"
@@ -222,4 +223,17 @@ class AppStartupReconnectManager @Inject constructor(
         ) == PackageManager.PERMISSION_GRANTED
     }
 
+    private suspend fun connectAiAssistant() {
+        val address = bluetoothDataManager.getBluetoothAddress()
+        val name = bluetoothDataManager.getBluetoothName()
+        if (address.isNullOrBlank() || name.isNullOrBlank()) return
+
+        AiAssistantClient.getInstance().connectAiAssistant(
+            address,
+            name,
+            "6600",
+            "ukuSPzMnpLvLS2TTLL9S8PvUJzfTCHnu",
+            "tz5dgRLm6tXS8gRr",
+        )
+    }
 }

@@ -43,6 +43,8 @@ class AiAssistantConversationManager @Inject constructor(
     private val started = AtomicBoolean(false)
 
     private var currentMessage: AiAssistantEntity? = null
+    /** 停听音频先于 ASR 文本到达时暂存，等有问题文本再挂到气泡上。 */
+    private var pendingQuestionAudioPath: String? = null
     private val typewriterProgress = mutableMapOf<Long, StreamState>()
 
     private val _state = MutableStateFlow(AiAssistantConversationState())
@@ -59,6 +61,7 @@ class AiAssistantConversationManager @Inject constructor(
         appScope.launch {
             repository.clearAllMessages()
             currentMessage = null
+            pendingQuestionAudioPath = null
             typewriterProgress.clear()
             _state.value = AiAssistantConversationState()
         }
@@ -111,7 +114,7 @@ class AiAssistantConversationManager @Inject constructor(
             AiAssistantClient.getInstance().aiAgentEventFlow().collect { event ->
                 when (event) {
                     is AgentEvent.AiAssistantResult -> {
-                        LogUtils.d("AiAssistantEvent.AiAssistantResult${event.data}")
+//                        LogUtils.d("AiAssistantEvent.AiAssistantResult${event.data}")
                         handleStreamingResult(event.data)
                     }
                     else -> Unit
@@ -144,9 +147,12 @@ class AiAssistantConversationManager @Inject constructor(
     private suspend fun handleStreamingResult(result: AiChatMessageDTO) {
         val questionText = anyToStringSafe(result.question)
         val answerText = anyToStringSafe(result.answer)
+        val questionAudioPath = result.questionAudioPath?.takeIf { it.isNotBlank() }
         val answerAudioPath = result.answerAudioPath?.takeIf { it.isNotBlank() }
         val serverMessageId = result.id?.takeIf { it.isNotBlank() }
-        if (questionText.isEmpty() && answerText.isEmpty() && answerAudioPath == null && !result.isFinished) return
+        if (questionText.isEmpty() && answerText.isEmpty() &&
+            questionAudioPath == null && answerAudioPath == null && !result.isFinished
+        ) return
 
         val newList = _state.value.messages.toMutableList()
 
@@ -155,6 +161,13 @@ class AiAssistantConversationManager @Inject constructor(
                 if (currentMessage?.answer?.isNotEmpty() == true) {
                     finalizeCurrentMessage(newList)
                 }
+                val resolvedQuestionAudio =
+                    questionAudioPath
+                        ?: pendingQuestionAudioPath
+                        ?: currentMessage?.questionAudioPath
+                if (questionAudioPath != null || pendingQuestionAudioPath != null) {
+                    pendingQuestionAudioPath = null
+                }
                 currentMessage = if (
                     currentMessage?.answer.isNullOrEmpty() &&
                     currentMessage?.question?.isNotEmpty() == true
@@ -162,6 +175,7 @@ class AiAssistantConversationManager @Inject constructor(
                     currentMessage!!.copy(
                         question = questionText,
                         questionType = mapContentType(result.questionType),
+                        questionAudioPath = resolvedQuestionAudio,
                         messageId = serverMessageId ?: currentMessage!!.messageId,
                     )
                 } else {
@@ -170,9 +184,31 @@ class AiAssistantConversationManager @Inject constructor(
                         questionType = mapContentType(result.questionType),
                         answer = "",
                         answerType = "",
+                        questionAudioPath = resolvedQuestionAudio,
                         messageId = serverMessageId,
                         timestamp = System.currentTimeMillis(),
                     )
+                }
+            }
+
+            questionAudioPath != null -> {
+                // 仅挂到已有 ASR 文本的消息；纯音频默认不单独展示。
+                val targetMessage = findMessageByServerId(newList, serverMessageId)
+                    ?: currentMessage?.takeIf {
+                        it.question.isNotEmpty() &&
+                            (serverMessageId == null || it.messageId == serverMessageId)
+                    }
+                    ?: newList.firstOrNull()?.takeIf {
+                        it.question.isNotEmpty() && it.questionAudioPath.isNullOrBlank()
+                    }
+                if (targetMessage != null) {
+                    currentMessage = targetMessage.copy(
+                        questionAudioPath = questionAudioPath,
+                        messageId = serverMessageId ?: targetMessage.messageId,
+                    )
+                } else {
+                    pendingQuestionAudioPath = questionAudioPath
+                    return
                 }
             }
 
@@ -230,6 +266,21 @@ class AiAssistantConversationManager @Inject constructor(
 
         currentMessage?.let { message ->
             upsertMessageInList(newList, message)
+            // 停听音频地址回填到已落库消息时，同步写库并结束当前流。
+            if (message.id != 0L &&
+                questionAudioPath != null &&
+                questionText.isEmpty() &&
+                answerText.isEmpty() &&
+                !result.isFinished
+            ) {
+                repository.insertMessage(message)
+                currentMessage = null
+                _state.value = _state.value.copy(
+                    messages = newList,
+                    streamingMessageId = null,
+                )
+                return
+            }
             _state.value = _state.value.copy(
                 messages = newList,
                 streamingMessageId = message.timestamp,
@@ -248,7 +299,10 @@ class AiAssistantConversationManager @Inject constructor(
 
     private suspend fun finalizeCurrentMessage(list: MutableList<AiAssistantEntity>) {
         val message = currentMessage ?: return
-        if (message.question.isEmpty() && message.answer.isEmpty() && message.answerAudioPath.isNullOrBlank()) {
+        // 无 ASR 文本的纯录音不落库、不展示。
+        if (message.question.isEmpty() && message.answer.isEmpty() &&
+            message.answerAudioPath.isNullOrBlank()
+        ) {
             currentMessage = null
             return
         }

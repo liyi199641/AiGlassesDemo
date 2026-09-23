@@ -51,6 +51,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -84,9 +85,6 @@ import com.realsil.sdk.audioconnect.smartwear.live.view.RTKVideoView
 import androidx.media3.ui.PlayerView
 import kotlinx.coroutines.launch
 import kotlin.math.min
-
-
-private const val LY_PREVIEW_ROTATION_DEGREES = 270f
 
 @SuppressLint("UnusedBoxWithConstraintsScope")
 @OptIn(ExperimentalMaterial3Api::class)
@@ -191,20 +189,23 @@ fun LiveScreen(
                     min(1f, maxHpx / layoutH)
                 }
                 if (uiState.isLyScheme) {
-                    // 眼镜摄像头传感器固定旋转 90°，RTSP(H264) 流不带旋转元数据，且 LY 方案无
-                    // 眼镜端旋转指令，只能在本地视图修正。PlayerView 已改用 TextureView，可可靠应用
-                    // rotationZ；再按 90° 旋转后的包围盒等比缩放，保证画面完整不变形地居中显示。
-                    // 若实测方向相反（画面倒了 180°），把 LY_PREVIEW_ROTATION_DEGREES 改成 270f 即可。
+                    // 统一走 relay + ExoPlayer，TextureView + rotationZ 修正预览方向。
+                    // 旋转角度运行时可切换（S 默认 270°，T 默认 0°）。
                     val lyAspect = 4f / 3f // 源视频 640x480
                     val lyLayoutW = maxWpx
                     val lyLayoutH = lyLayoutW / lyAspect
-                    val lyScale = min(maxWpx / lyLayoutH, maxHpx / lyLayoutW).coerceAtMost(1f)
+                    val lyRotation = uiState.lyRotationDegrees.toFloat()
+                    val lyScale = if (lyRotation == 90f || lyRotation == 270f) {
+                        min(maxWpx / lyLayoutH, maxHpx / lyLayoutW).coerceAtMost(1f)
+                    } else {
+                        min(maxWpx / lyLayoutW, maxHpx / lyLayoutH).coerceAtMost(1f)
+                    }
                     LyExoPlayerPreviewView(
                         modifier = Modifier
                             .fillMaxWidth()
                             .aspectRatio(lyAspect)
                             .graphicsLayer {
-                                rotationZ = LY_PREVIEW_ROTATION_DEGREES
+                                rotationZ = lyRotation
                                 scaleX = lyScale
                                 scaleY = lyScale
                             },
@@ -271,6 +272,8 @@ fun LiveScreen(
                     onRetryDouyinBroadcast = { activity?.let(viewModel::retryDouyinBroadcast) },
                     onToggleMic = viewModel::togglePreviewMic,
                     onToggleRotation = viewModel::togglePreviewRotation,
+                    onVerifyNetwork = viewModel::verifyPublicNetwork,
+                    onToggleLyRotation = viewModel::toggleLyPreviewRotation,
                 )
             }
         }
@@ -523,6 +526,8 @@ private fun LiveFullscreenOverlay(
     onRetryDouyinBroadcast: () -> Unit,
     onToggleMic: () -> Unit,
     onToggleRotation: () -> Unit,
+    onVerifyNetwork: () -> Unit,
+    onToggleLyRotation: () -> Unit,
 ) {
     val showBlockingOverlay = uiState.isConnecting && when (uiState.connectPhase) {
         LiveConnectPhase.STOPPING,
@@ -594,7 +599,15 @@ private fun LiveFullscreenOverlay(
                     color = Color.White,
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
+                    modifier = Modifier.weight(1f),
                 )
+                TextButton(onClick = onVerifyNetwork) {
+                    Text(
+                        text = stringResource(R.string.live_verify_public_network),
+                        color = Color.White,
+                        fontSize = 13.sp,
+                    )
+                }
             }
 
             Spacer(modifier = Modifier.height(12.dp))
@@ -627,6 +640,22 @@ private fun LiveFullscreenOverlay(
                         activeColor = Color.Red,
                     )
                 }
+            }
+
+            if (uiState.networkCheckResult != null) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = uiState.networkCheckResult,
+                    color = Color(0xFFB3E5FC),
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(
+                            color = Color.Black.copy(alpha = 0.55f),
+                            shape = RoundedCornerShape(8.dp),
+                        )
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                )
             }
 
             if (uiState.connectPhase == LiveConnectPhase.DOUYIN &&
@@ -674,6 +703,12 @@ private fun LiveFullscreenOverlay(
                     .padding(horizontal = 24.dp, vertical = 32.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
+                if (uiState.isLyScheme && uiState.isPlayingLocal) {
+                    LyPreviewControlRow(
+                        rotationDegrees = uiState.lyRotationDegrees,
+                        onToggleRotation = onToggleLyRotation,
+                    )
+                }
                 if (uiState.isPlayingLocal &&
                     uiState.showsLocalPreview &&
                     uiState.showsPreviewControls
@@ -753,6 +788,36 @@ private fun LivePreviewControlRow(
         LivePreviewControlButton(
             icon = Icons.Default.ScreenRotation,
             label = stringResource(R.string.live_preview_rotate),
+            active = true,
+            onClick = onToggleRotation,
+        )
+    }
+}
+
+/**
+ * LY 方案预览控制行：仅旋转角度。
+ * 音轨开关已移除——S 系列开音轨存在重复收音、T 系列带宽不足会卡顿/冻结，均为设备侧限制，
+ * 详见 docs/LY直播预览-S与T系列方案差异.md。
+ */
+@Composable
+private fun LyPreviewControlRow(
+    rotationDegrees: Int,
+    onToggleRotation: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(
+                color = Color.Black.copy(alpha = 0.55f),
+                shape = RoundedCornerShape(28.dp),
+            )
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        horizontalArrangement = Arrangement.SpaceEvenly,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        LivePreviewControlButton(
+            icon = Icons.Default.ScreenRotation,
+            label = "${stringResource(R.string.live_preview_rotate)} ${rotationDegrees}°",
             active = true,
             onClick = onToggleRotation,
         )

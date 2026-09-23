@@ -1,6 +1,6 @@
 # LinWear Ai Glasses SDK Documentation
 
-> [中文版](README.md)
+> [中文版](README.md) · [AI Feature Guide](AI-README-en.md)
 
 ---
 
@@ -17,14 +17,15 @@
   - [5.2 Subscribe BLE + BT State (Recommended)](#52-subscribe-ble--bt-state-recommended)
   - [5.3 Manual BT Reconnect (LY / TB)](#53-manual-bt-reconnect-ly--tb)
 - [6. File Sync](#6-file-sync)
-- [7. AI Assistant](#7-ai-assistant)
-- [8. AI Translation](#8-ai-translation)
-- [9. Live Streaming](#9-live-streaming)
-  - [9.6 Live Experience Config (Douyin Key / Package Name / Signing)](#96-live-experience-config-douyin-key--package-name--signing)
-- [10. SDK Flow Events](#10-sdk-flow-events)
-- [11. Device Settings](#11-device-settings)
-- [12. OTA Upgrade](#12-ota-upgrade)
-- [13. Error Codes](#13-error-codes)
+- [7. AI Features](#7-ai-features) → see [docs/AI-README-en.md](AI-README-en.md)
+- [8. Live Streaming](#8-live-streaming)
+  - [8.6 Live Experience Config (Douyin Key / Package Name / Signing)](#86-live-experience-config-douyin-key--package-name--signing)
+- [9. SDK Flow Events](#9-sdk-flow-events)
+- [10. Device Settings](#10-device-settings)
+- [11. OTA Upgrade](#11-ota-upgrade)
+- [12. Error Codes](#12-error-codes)
+
+> **AI capabilities** (assistant / translation / image translation / calls) are documented separately: [**AI Feature Guide**](AI-README-en.md) · [中文](AI-README.md)
 
 ---
 
@@ -47,8 +48,9 @@ tools:targetApi="33" />
 <uses-permission android:name="android.permission.RECORD_AUDIO"/>
 <!-- Video call -->
 <uses-permission android:name="android.permission.CAMERA"/>
-<!-- Live streaming front desk service -->
+<!-- Live streaming front desk service ，WIFI keep-alive-->
 <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+<uses-permission android:name="android.permission.WAKE_LOCK" />
 ```
 
 ---
@@ -132,7 +134,7 @@ Recommended order (see Demo: `LinWearApplication` + `AppStartupReconnectManager`
 3. (Optional) `AiAssistantClient.getInstance().applyServerEnvironmentToGlobals(...)` — set AI service environment (callable before or after `initializeAiClient`)
 4. `GlassesManage.initialize(SdkConfig(...))` — only the **first** call takes effect
 5. `AiAssistantClient.getInstance().initializeAiClient(AiAgentConfig(...))` — call again when switching environments or reconfiguring AI; does **not** auto-reconnect the AI service
-6. After BLE connect and auth params are available, call `connectAiAssistant(...)` (see section 7)
+6. After BLE connect and auth params are available, call `connectAiAssistant(...)` (see [AI guide](AI-README-en.md))
 
 ```kotlin
 // Application.onCreate or before entering glasses features
@@ -183,8 +185,8 @@ Used by `GlassesManage.initialize(SdkConfig(...))`:
 | `context` | `Context` | Yes | — | Application context. The SDK uses `applicationContext` internally. |
 | `channel` | `GlassesConstant.ChannelType` | Yes | — | Glasses hardware/protocol channel. Selects the BLE command strategy and capability set. **Must match the connected glasses platform.** |
 | `logLevel` | `Int` | No | `LogUtils.V` | SDK log verbosity, using UtilCodex `LogUtils` constants: `V` (most verbose) → `D` → `I` → `W` → `E` (least verbose). |
-| `mediaFilesStorageDirName` | `String` | No | `"mediaFiles"` | Subdirectory name under `context.filesDir` for media files synced from glasses. |
-| `aiImageRecognitionStorageDirName` | `String` | No | `"tempImages"` | Subdirectory name under `context.filesDir` for temporary AI image-recognition files. |
+| `mediaFilesStorageDirName` | `String` | No | `"mediaFiles"` | Subdirectory for media files synced from glasses, under the app-specific external sandbox `getExternalFilesDir(null)` (falls back to `filesDir` if unavailable). |
+| `aiImageRecognitionStorageDirName` | `String` | No | `"tempImages"` | Subdirectory for temporary AI image-recognition files, under `getExternalFilesDir(null)` (falls back to `filesDir` if unavailable). |
 | `productSeries` | `GlassesConstant.ProductSeries` | No | `S` | Glasses product series. Affects supported media-sync Wi-Fi modes and ISP OTA result parsing. **Must match the connected hardware series.** |
 | `deviceLensType` | `GlassesConstant.LensType` | No | `LensType.FLAT_ANGLE` | Lens type. On the RTK channel, wide-angle enables JPG distortion correction; flat-angle skips it. Only takes effect when passed to `initialize`. |
 
@@ -217,48 +219,9 @@ Used by `GlassesManage.initialize(SdkConfig(...))`:
 
 ### AiAgentConfig parameters
 
-Used by `AiAssistantClient.getInstance().initializeAiClient(AiAgentConfig(...))`:
+For the full `AiAgentConfig` parameter table, environment switching, and connection notes, see **[AI Feature Guide §3](AI-README-en.md#3-ai-initialization-and-configuration)**.
 
-| Parameter | Type | Required | Default | Description |
-|-----------|------|:--------:|---------|-------------|
-| `context` | `Context` | Yes | — | Application context, used to create Zego call, image translation, and other AI components. |
-| `channel` | `GlassesConstant.ChannelType` | Yes | — | AI business channel. **Should match `SdkConfig.channel`.** |
-| `aiModelType` | `GlassesConstant.AiModelVendor` | No | `DEFAULT` | LLM vendor identifier; affects routing for AI chat, translation, and related requests. |
-| `serverEnvironment` | `GlassesConstant.ServerEnvironment` | No | `DEV` | Preset AI service environment (HTTP `baseUrl` + AI service `wsUrl`). Ignored when `customServerEnvironment` is set. |
-| `customServerEnvironment` | `AiServerEnvironmentConfig?` | No | `null` | Custom AI service URLs; **takes precedence over** `serverEnvironment`. |
-| `enableDefaultPlaySimultaneousAudio` | `Boolean` | No | `true` | Whether the SDK auto-plays real-time simultaneous-interpretation downlink PCM (`simultaneous_audio`). When `false`, the SDK does not auto-play. The runtime toggle `setTranslationAudioPlaybackEnabled` still applies when init allows it (see [section 8](#real-time-translation-audio-playback-toggle)). |
-| `enableDefaultPlayAgentAudio` | `Boolean` | No | `true` | Whether the SDK auto-plays AI assistant (Agent) downlink PCM. When `false`, the SDK does not auto-play. The runtime toggle `setAgentAudioPlaybackEnabled` still applies when init allows it (see [section 7.6](#76-ai-chat-reply-audio-playback-toggle)). |
-| `translationAudioStorageDirName` | `String` | No | `"transAudioFiles"` | Subdirectory name under `context.filesDir` for translation/dialog recording files. |
-| `aiDialogueLanguage` | `Int` | No | `140` | Source language ID (`langType`) for AI dialogue when the glasses button starts recording. Default `140` (Chinese). Can be changed at runtime with `setAiDialogueLanguage` (see [section 7.7](#77-ai-dialogue-source-language)). |
-
-**`aiModelType` values**:
-
-| Enum | Description |
-|------|-------------|
-| `AiModelVendor.DEFAULT` | Use backend default |
-| `AiModelVendor.QWEN` | Qwen |
-| `AiModelVendor.GPT_5O_MINI` | GPT-5o mini |
-| `AiModelVendor.KIMI_V2` | Kimi v2 |
-
-**`serverEnvironment` presets**:
-
-| Enum | Description |
-|------|-------------|
-| `DEV` | Development |
-| `TEST` | Test / pre-release |
-| `CHINA` | Production (China) |
-| `EUROPE` | Production (Europe) |
-| `SINGAPORE` | Production (Singapore) |
-| `CUSTOM`   | Custom environment (configure `baseUrl` and `wsUrl` separately) |
-
-**`customServerEnvironment` (`AiServerEnvironmentConfig`) fields**:
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `baseUrl` | `String` | AI HTTP service root URL, e.g. `https://your-http-host/` |
-| `wsUrl` | `String` | AI service URL, e.g. `wss://your-ws-host` |
-
-> Each `initializeAiClient` call tears down the previous AI service connection and rebuilds dependencies, but does **not** reconnect automatically. After switching environments, call `connectAiAssistant(...)` or `manualReconnect()` again.
+---
 
 ### GlassesManage core APIs
 
@@ -291,7 +254,6 @@ Legend: ✓ supported · △ partial / differs by channel · — not supported (
 | API | LY | RTK | TB | Notes |
 |-----|:--:|:---:|:--:|-------|
 | `initialize` / `isDebug` / `setProductSeries` | ✓ | ✓ | ✓ | Shared |
-| `aiUplinkProfile` | ✓ | ✓ | ✓ | Channel AI uplink profile |
 | `eventFlow` / `connectionStateFlow` / `currentConnectionState` | ✓ | ✓ | ✓ | Shared |
 | `startScanBleDevices` / `stopScanBleDevices` | ✓ | ✓ | ✓ | |
 | `connect` / `disConnect` | ✓ | ✓ | ✓ | Unpair clears bonding (including classic Bluetooth) |
@@ -529,7 +491,7 @@ Notes:
 
 Sync media files from glasses to the phone (BLE must be connected first). **Subscribe to** `GlassesManage.eventFlow()` first, then call `syncAllMediaFile()`. Progress and results are delivered via `FileSyncEvent`.
 
-> **AI service**: Media sync requires joining the glasses Wi-Fi hotspot. The SDK **pauses the AI service** before sync and **automatically resumes it** after `FileSyncEvent.BatchDownloadFinished` or `FileSyncEvent.Failed`. See [7.1.1 AI service during Wi-Fi usage](#711-ai-service-during-wi-fi-usage).
+> **AI service**: Media sync requires joining the glasses Wi-Fi hotspot. The SDK **pauses the AI service** before sync and **automatically resumes it** after `FileSyncEvent.BatchDownloadFinished` or `FileSyncEvent.Failed`. See [AI guide §4.1](AI-README-en.md#41-ai-service-during-wi-fi-usage).
 
 ```kotlin
 // 1. Subscribe to sync events (register once in Application / ViewModel init)
@@ -661,460 +623,22 @@ Whether RTK JPG distortion correction runs is controlled by `SdkConfig.deviceLen
 
 ---
 
-## 7. AI Assistant
-AI capabilities include **voice chat, image recognition, and translation**. Two integration approaches are available:
+## 7. AI Features
 
-### SDK built-in LLM
-```kotlin
-val aiClient = AiAssistantClient.getInstance()
+AI capabilities are documented by feature module (including events and how to use callback `data`):
 
-// Optional: set custom environment URLs (callable before or after initializeAiClient)
-aiClient.applyServerEnvironmentToGlobals(
-    AiServerEnvironmentConfig(
-        baseUrl = "https://your-http-host/",
-        wsUrl = "wss://your-ws-host"
-    )
-)
+- English: [**AI-README-en.md**](AI-README-en.md) — Dialogue / AI Translation (conversation + real-time) / A/V call translation / Image Translation
+- Chinese: [**AI-README.md**](AI-README.md)
 
-// Initialize AI runtime
-aiClient.initializeAiClient(
-    AiAgentConfig(
-        context = context,
-        channel = channel,
-        aiModelType = GlassesConstant.AiModelVendor.DEFAULT,
-        serverEnvironment = GlassesConstant.ServerEnvironment.DEV,
-        // When provided, this custom environment takes precedence over serverEnvironment
-        customServerEnvironment = AiServerEnvironmentConfig(
-            baseUrl = "https://your-http-host/",
-            wsUrl = "wss://your-ws-host"
-        ),
-        enableDefaultPlaySimultaneousAudio = true, // true: SDK auto-plays simultaneous interpretation audio
-        enableDefaultPlayAgentAudio = true,        // true: SDK auto-plays Agent audio
-        translationAudioStorageDirName = GlassesConstant.DEFAULT_TRANS_AUDIO_FILES_STORAGE_DIR,
-        aiDialogueLanguage = 140,                  // AI dialogue source langType; default 140 (Chinese)
-    )
-)
-
-// Connect AI service (must be called after initializeAiClient)
-aiClient.connectAiAssistant(
-    deviceId = deviceId,
-    deviceName = deviceName,
-    deviceModel = deviceModel,
-    clientId = clientId,
-    sk = sk
-)
-
-// Subscribe to AI dialogue in-progress state
-viewModelScope.launch {
-    aiClient.aiDialogueInProgressFlow().collect { inProgress ->
-        // Update UI: in-dialogue indicator, disable duplicate triggers, etc.
-    }
-}
-
-// Subscribe to AI events
-aiClient.aiAgentEventFlow().collect { event ->
-    when (event) {
-        is AgentEvent.AiAssistantConnectState -> Unit
-        is AgentEvent.AiAssistantResult -> {
-            val msg = event.data  // AiChatMessageDTO
-            // msg.question / msg.answer — streaming text
-            // msg.answerAudioPath — local WAV path for TTS audio
-            // msg.isFinished — whether this round is complete
-        }
-        is AiTranslationEvent.AiTranslationResult -> Unit
-        else -> Unit
-    }
-}
-```
-
-The following public methods are exposed by `AiAssistantClient` for host apps.
-
-### 7.1 Lifecycle and connection
-- `AiAssistantClient.getInstance()`: returns the singleton instance.
-- `applyServerEnvironmentToGlobals(env, localWsUrl)`: syncs a preset AI service environment. In `CUSTOM` mode, `localWsUrl` can override the default AI service address. Callable before or after `initializeAiClient`; if the AI service is already connected, call `connectAiAssistant(...)` or `manualReconnect()` again after switching environments.
-- `applyServerEnvironmentToGlobals(serverConfig)`: syncs a custom AI service environment, allowing the host app to pass `baseUrl` and `wsUrl` directly.
-- `initializeAiClient(config: AiAgentConfig)`: initializes the AI client runtime and creates the dependencies required by the AI service, image translation, and calling. Repeated calls clear the previous connection first, but **do not reconnect automatically**. Call `connectAiAssistant(...)` again if needed. If `customServerEnvironment` is provided, it takes precedence.
-- `connectAiAssistant(deviceId, deviceName, deviceModel, clientId, sk)`: establishes the AI assistant connection. Usually called after the device is connected and auth parameters are available.
-- `disconnect()`: disconnects the AI service, ends the call, clears image translation state, and cancels internal coroutines. Recommended when leaving the page or disconnecting the device.
-- `manualReconnect()`: manually triggers AI service reconnect. Call it after receiving `AgentEvent.ReconnectRequired`.
-
-#### 7.1.1 AI service during Wi-Fi usage
-
-Media sync, OTA, and live streaming require the phone to join the glasses Wi-Fi hotspot (SoftAP or P2P), which conflicts with the AI service. **LY / RTK / TB** handle this uniformly — **no manual pause/resume in the app**:
-
-| Phase | SDK behavior |
-|-------|----------------|
-| Start | **Pause the AI service** (end the current session and disconnect; brief network settle) |
-| End (success or failure) | On `FileSyncEvent.BatchDownloadFinished`, `OTAEvent.Success`, `LiveEvent.RespStop`, or failure events such as `FileSyncEvent.Failed` / `OTAEvent.Failed` / `LiveEvent.Failed` → **automatically resume the AI service** |
-| Glasses BLE disconnect | Clear the pause flag; **do not** resume AI (handled by `disconnect()` etc.) |
-
-**GlassesManage APIs that auto pause / resume the AI service**:
-
-| API | LY | RTK | TB |
-|-----|----|----|-----|
-| `syncAllMediaFile()` | ✓ | ✓ | ✓ |
-| `startOTA()` / `startRtkOta()` | ✓ | ✓ | ✓ (FIRMWARE) |
-| `startLiveStreaming()` | ✓ | ✓ | ✓ |
-| `stopLiveStreaming()` | ✓ | ✓ | ✓ |
-
-**If your app runs custom Wi-Fi–exclusive flows**, you can control pause/resume manually:
-
-| When | Description | API |
-|------|-------------|-----|
-| Before | Pause AI service | `AiAssistantClient.beginWifiExclusiveSession()` |
-| After | Resume AI service | `AiAssistantClient.endWifiExclusiveSession()` |
-
-```kotlin
-val ai = AiAssistantClient.getInstance()
-// Before custom Wi-Fi work — pause AI service
-runBlocking { ai.beginWifiExclusiveSession() }
-// ... your Wi-Fi flow ...
-// When done — resume AI service
-ai.endWifiExclusiveSession()
-```
-
-> If `connectAiAssistant(...)` was never called, resume has no session to reconnect.  
-> Legacy `suspendConnectionTemporarily()` / `resumeSuspendedConnection()` still work; they pause / resume the AI service respectively.
-
-### 7.2 Event subscription
-- `aiAgentEventFlow(): Flow<AiAgentBase>`: unified AI event stream.
-- `aiDialogueInProgressFlow(): StateFlow<Boolean>`: AI dialogue in progress (glasses recording / awaiting reply / TTS delivery). `true` when the device starts recording or TTS `start` is received; `false` on TTS `stop`, device cancel/interrupt, or disconnect. Use for in-dialogue UI indicators or to prevent duplicate triggers.
-
-  Demo: `AiAssistantViewModel.observeAiDialogueState()` subscribes to this Flow and updates UI state.
-
-- Possible event types:
-  `AgentEvent` (connection state, chat result, image translation result, call state, etc.),
-  `AiTranslationEvent` (translation text result / failure),
-  `LocalVadEvent` (local VAD state).
-
-> **`AgentAudioEvent` is deprecated**: this event type has been removed from the SDK and is no longer delivered via `aiAgentEventFlow()`. Downlink PCM is played inside the SDK (controlled by `enableDefaultPlaySimultaneousAudio` / `enableDefaultPlayAgentAudio` and the runtime playback toggles).
-
-#### **AiChatMessageDTO** (`AgentEvent.AiAssistantResult` payload)
-
-`AgentEvent.AiAssistantResult.data` is an `AiChatMessageDTO`. It may be emitted multiple times per dialogue round (streaming text / final result).
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `id` | `String?` | Message ID (delivered when STT / TTS audio completes; used to correlate Q&A within the same round) |
-| `question` | `Any?` | User input: text, image path, etc. |
-| `answer` | `Any?` | AI reply text (streamed incrementally) |
-| `questionType` | `AiContentType` | Question content type |
-| `answerType` | `AiContentType` | Answer content type |
-| `answerAudioPath` | `String?` | Local WAV path for this round's TTS audio (on TTS `stop`, or on interrupt/new round) |
-| `isFinished` | `Boolean` | Whether this round is complete (`true` on STT recognized, TTS `stop`, image recognition done, etc.) |
-
-`AiContentType` enum: `NONE`, `TEXT`, `IMAGE_PATH`, `IMAGE_FILE`, `AUDIO_DATA`.
-
-If SDK simultaneous-interpretation playback is enabled at init time but you need an in-session toggle for translated audio during a single real-time translation session, use `setTranslationAudioPlaybackEnabled` / `isTranslationAudioPlaybackEnabled` (see [Real-time translation audio playback toggle](#real-time-translation-audio-playback-toggle) in section 8).
-
-If SDK agent audio playback is enabled at init time but you need an in-session toggle for AI reply audio during a chat, use `setAgentAudioPlaybackEnabled` / `isAgentAudioPlaybackEnabled` (see [section 7.6](#76-ai-chat-reply-audio-playback-toggle)).
-
-### 7.3 AI translation APIs
-
-> **Permission**: When the app captures phone microphone audio for `startReceivingAudio` / `sendReceivingAudioData`, request and hold `android.permission.RECORD_AUDIO`.
-
-#### Language list
-
-| Scenario | How to get languages | Notes |
-|----------|----------------------|-------|
-| **Voice / dialog / simultaneous translation** | Integer `langType` | No dedicated SDK HTTP API for a voice-translation language list. Pass `from`, `language`, and `toList` as backend language IDs (Demo defaults: source `140`, target `47`). Maintain display names locally; see Demo `assets/languages.json` (`name`, `nameEn`, `langType`, `code`). |
-| **Image translation** | `getImageTransLangList(serviceType)` | Fetches supported languages per provider via `AgentEvent.ImageTransLangListResult` (includes `requestId`). |
-
-**Image translation — fetch language list**
-
-> **requestId correlation**: `getImageTransLangList`, `imageTrans`, and `getVoiceRoomParams` are HTTP-style requests that deliver results asynchronously via `aiAgentEventFlow()`. After multiple calls or leaving and re-entering a screen, you may receive a stale callback from a previous request. Save the `requestId` returned by the API and verify `event.requestId` in the callback; the SDK also cancels the previous in-flight request of the same type when a new one is started.
-
-```kotlin
-val aiClient = AiAssistantClient.getInstance()
-var pendingLangListRequestId: Long? = null
-
-viewModelScope.launch {
-    aiClient.aiAgentEventFlow().collect { event ->
-        when (event) {
-            is AgentEvent.ImageTransLangListResult -> {
-                if (event.requestId != pendingLangListRequestId) return@collect
-                event.languageList.forEach { lang ->
-                    // lang.langType        — language ID (for imageTrans)
-                    // lang.name            — display name (Chinese)
-                    // lang.nameEn          — English name
-                    // lang.code            — e.g. zh-CN
-                    // lang.supportSource / lang.supportTarget — valid as source/target
-                }
-            }
-            else -> Unit
-        }
-    }
-}
-
-// serviceType: VOLC_ENGINE(1) / ALIYUN(2) / MICROSOFT(3) / OPEN_AI(4)
-// Returns Long requestId for this call; returns 0 if the AI client is not initialized
-pendingLangListRequestId =
-    aiClient.getImageTransLangList(GlassesConstant.ImageTranslateServerType.VOLC_ENGINE)
-```
-
-`LanguageResult` fields: `name`, `nameEn`, `langType`, `code`, `supportSource`, `supportTarget`.
-
-- `startAiTranslation(from, toList, reqId, audioFormat)`: creates a translation session. When the app captures microphone audio on the phone side, use `GlassesConstant.AI_TRANSLATION_AUDIO_FORMAT_RAW_PCM` for `audioFormat`.
-- `startReceivingAudio(mode, language)`: starts sending recorded audio to the AI service. Common `mode` values:
-  `GlassesConstant.AI_ASSISTANT_TYPE_LISTEN_MODE_TRANSLATION` (dialog translation),
-  `GlassesConstant.AI_ASSISTANT_TYPE_LISTEN_MODE_SIMULTANEOUS_INTERPRETATION` (real-time simultaneous interpretation).
-- `sendReceivingAudioData(mode, byteArray)`: continuously sends 16 kHz mono PCM. The SDK applies uplink preprocessing (denoise, AGC, etc.) internally; the host app should send raw PCM only.
-- `pauseListening()`: pauses the current listening session. Useful for simultaneous interpretation when you want to pause without ending the whole session.
-- `stopReceivingAudio(mode)`: sends `stop` and ends the current recording flow for the given mode.
-- `cancelReceivingAudio()`: aborts the current recording / AI listening flow immediately.
-- `setTranslationAudioPlaybackEnabled(enabled)`: enables or disables SDK auto-playback of **real-time translation** downlink audio (mainly for simultaneous interpretation `simultaneous_audio`). When disabled, playback stops immediately and the pending queue is cleared, but the **translation session is not interrupted**.
-- `isTranslationAudioPlaybackEnabled()`: returns whether real-time translation downlink playback is enabled. Returns `true` if the AI client is not initialized.
-
-### 7.4 Image translation APIs
-- `getImageTransLangList(serviceType): Long`: fetches the supported language list for the given image translation provider. `serviceType` can be `VOLC_ENGINE`, `ALIYUN`, `MICROSOFT`, or `OPEN_AI`. Returns the `requestId` for this call; result is delivered via `AgentEvent.ImageTransLangListResult(requestId, languageList)`.
-- `imageTrans(targetImage, sourceLanguage, targetLanguage): Long`: uploads an image and requests image translation. Returns the `requestId` for this call; results are delivered via `AgentEvent.ImageTransResult(requestId, imageBase64)` / `AgentEvent.ImageTransFailEvent(requestId, code, msg)`.
-
-```kotlin
-var pendingImageTransRequestId: Long? = null
-
-pendingImageTransRequestId = aiClient.imageTrans(
-    targetImage = imageFile,
-    sourceLanguage = srcLangType,
-    targetLanguage = targetLangType,
-)
-
-// In aiAgentEventFlow():
-is AgentEvent.ImageTransResult -> {
-    if (event.requestId != pendingImageTransRequestId) return@collect
-    // handle translation result
-}
-is AgentEvent.ImageTransFailEvent -> {
-    if (event.requestId != pendingImageTransRequestId) return@collect
-    // handle failure
-}
-```
-
-### 7.5 Voice room and audio/video call APIs
-
-> **Permissions**: Calls need microphone (and camera for video calls). Request `android.permission.RECORD_AUDIO`; video calls also require `android.permission.CAMERA`.
-
-- `getVoiceRoomParams(lang, target, type, appId, mac): Long`: fetches Zego voice room parameters. Returns the `requestId` for this call; results are delivered via `AgentEvent.VoiceRoomParamsEvent(requestId, params)` / `AgentEvent.VoiceRoomParamsFailEvent(requestId, code, msg)`. Verify `event.requestId` before calling `startCall(...)`.
-  `type = 1` means video call, `type = 2` means voice call.
-- `startCall(appID, token, roomID, streamId, userID, isVideo, local, remote)`: starts an audio/video call.
-- `updateLocalView(view)`: updates the local preview `TextureView`.
-- `updateRemoteView(view)`: updates the remote `TextureView`.
-- `endCall()`: ends the call.
-- `muteMicrophone(mute)`: mutes / unmutes the microphone.
-- `enableSpeaker(enable)`: enables / disables speaker playback.
-- `muteVideo(mute)`: disables / enables local video capture.
-- `switchCamera(useFront)`: switches between front and rear camera.
-- `setPlayVolume(volume)`: sets call playback volume.
-
-### 7.6 AI chat reply audio playback toggle
-
-Applies to AI assistant voice chat (TTS / `agent_audio`): lets users temporarily turn SDK auto-playback of reply audio on or off during an active conversation, without changing `AiAgentConfig.enableDefaultPlayAgentAudio`.
-
-**Behavior**:
-
-| Item | Description |
-|------|-------------|
-| Scope | SDK auto-playback of TTS binary stream and `agent_audio` |
-| Relation to init config | Still constrained by `enableDefaultPlayAgentAudio = false`; the runtime toggle cannot enable playback when that init flag is `false` |
-| When disabled | Auto-playback stops; audio file writes are unaffected (`AgentAudioEvent` is deprecated — no PCM event callback) |
-| When disabled during playback | If a TTS stream is active, playback stops immediately and the pending queue is cleared, but the **AI chat session is not interrupted** |
-
-- `setAgentAudioPlaybackEnabled(enabled)`: enables or disables SDK auto-playback of AI chat downlink audio.
-- `isAgentAudioPlaybackEnabled()`: returns whether AI chat downlink playback is enabled. Returns `true` if the AI client is not initialized.
-
-```kotlin
-val aiClient = AiAssistantClient.getInstance()
-
-// User turns off AI reply playback (takes effect immediately)
-aiClient.setAgentAudioPlaybackEnabled(false)
-
-// Query current state
-val playbackEnabled = aiClient.isAgentAudioPlaybackEnabled()
-
-// Re-enable SDK auto-playback
-aiClient.setAgentAudioPlaybackEnabled(true)
-```
-
-Demo: `AiAssistantScreen` provides a bottom “Reply audio: On / Off” toggle, mapped to `AiAssistantViewModel.toggleAgentAudioPlayback()`.
-
-### 7.7 AI dialogue source language
-
-When the glasses button starts AI dialogue recording, the SDK uses the configured source language ID (`langType`) for `startReceivingAudio`. Set it at init via `AiAgentConfig.aiDialogueLanguage`, or change it at runtime.
-
-| Item | Description |
-|------|-------------|
-| Scope | Glasses-side AI dialogue (button recording); does **not** affect App-driven translation / simultaneous interpretation |
-| Value | Backend language ID (`langType`), e.g. `140` (Chinese); see Demo `assets/languages.json` |
-| When it applies | `setAiDialogueLanguage` updates the config immediately; if the AI service is connected, the WebSocket is disconnected, released, and reconnected so the server re-initializes via HELLO, and local session state is cleared. **Listening is blocked until rebuild finishes and HELLO completes** (glasses button recording is stopped); query with `isListenBlockedByWsReconnect()` |
-
-- `setAiDialogueLanguage(language)`: updates the AI dialogue source language without calling `initializeAiClient` again; when already connected, releases and rebuilds the WS (also resets local listen/TTS/image-recognition state), and blocks `startReceivingAudio` / glasses listen until ready.
-- `getAiDialogueLanguage()`: returns the current AI dialogue source language; returns `140` if the AI client is not initialized.
-- `isListenBlockedByWsReconnect()`: whether a language-change WS rebuild is still in progress (HELLO not ready); do not start listening while `true`.
-
-```kotlin
-val aiClient = AiAssistantClient.getInstance()
-
-// Set at initialization
-aiClient.initializeAiClient(
-    AiAgentConfig(
-        context = context,
-        channel = channel,
-        aiDialogueLanguage = 140, // Chinese
-    )
-)
-
-// Change at runtime (e.g. user picks a dialogue language in settings)
-aiClient.setAiDialogueLanguage(47) // English, etc.
-
-val currentLang = aiClient.getAiDialogueLanguage()
-```
-
-## 8. AI Translation
-
-Please refer to the Demo `translate` implementation.
-
-> **Permission**: Request `android.permission.RECORD_AUDIO` before capturing microphone audio for translation. Prompt the user if permission is denied.
-
-### Language list (voice translation)
-
-Voice, dialog, and simultaneous interpretation use **language IDs (`langType`, Int)**, not locale strings. The SDK does not expose an online API to fetch the voice-translation language table; the host app maintains the list (display names + `langType` for API calls).
-
-Demo approach: load from `assets/languages.json`. Example entry:
-
-```json
-{
-  "name": "Chinese",
-  "nameEn": "Chinese",
-  "langType": 140,
-  "code": "zh-CN"
-}
-```
-
-```kotlin
-// Load local language table (same as Demo)
-val languages: List<Language> /* parse languages.json */
-
-val srcLangType = languages.find { it.code == "zh-CN" }?.langType ?: 140
-val targetLangType = languages.find { it.code == "en-US" }?.langType ?: 47
-
-aiClient.startAiTranslation(
-    from = srcLangType,
-    toList = listOf(targetLangType),
-    reqId = System.currentTimeMillis(),
-    audioFormat = GlassesConstant.AI_TRANSLATION_AUDIO_FORMAT_RAW_PCM,
-)
-aiClient.startReceivingAudio(
-    mode = GlassesConstant.AI_ASSISTANT_TYPE_LISTEN_MODE_TRANSLATION,
-    language = srcLangType, // source language ID, same as from
-)
-```
-
-Common `mode` values:
-
-| Constant | Scenario |
-|----------|----------|
-| `AI_ASSISTANT_TYPE_LISTEN_MODE_TRANSLATION` | Dialog translation |
-| `AI_ASSISTANT_TYPE_LISTEN_MODE_SIMULTANEOUS_INTERPRETATION` | Real-time simultaneous interpretation |
-
-> For image translation languages, use `getImageTransLangList` — see [7.3](#73-ai-translation-apis) and [7.4](#74-image-translation-apis).
-
-When the app actively captures microphone audio on the phone side for translation, the recommended call order is:
-
-```kotlin
-val aiClient = AiAssistantClient.getInstance()
-val mode = GlassesConstant.AI_ASSISTANT_TYPE_LISTEN_MODE_TRANSLATION
-val requestId = System.currentTimeMillis()
-
-aiClient.startAiTranslation(
-    from = 140,
-    toList = listOf(47),
-    reqId = requestId,
-    audioFormat = GlassesConstant.AI_TRANSLATION_AUDIO_FORMAT_RAW_PCM
-)
-
-aiClient.startReceivingAudio(mode, 140)
-
-audioRecorderPcmFlow.collect { pcm ->
-    aiClient.sendReceivingAudioData(mode = mode, byteArray = pcm)
-}
-
-aiClient.stopReceivingAudio(mode)
-```
-
-Notes:
-- `startAiTranslation(...)`: create the translation session before sending audio.
-- `startReceivingAudio(mode, language)`: enter translation listening state; `language` is the source language.
-- `sendReceivingAudioData(...)`: continuously sends 16 kHz mono PCM raw data.
-- `pauseListening()`: pause without ending the whole session, mainly for simultaneous interpretation scenarios.
-- `stopReceivingAudio(mode)`: normally end the current translation session.
-- `cancelReceivingAudio()`: abort the current audio input flow abnormally.
-
-#### Real-time translation audio playback toggle
-
-Applies to `AI_ASSISTANT_TYPE_LISTEN_MODE_SIMULTANEOUS_INTERPRETATION` (real-time simultaneous interpretation): lets users temporarily turn SDK auto-playback of translated audio on or off during an active session, without changing `AiAgentConfig.enableDefaultPlaySimultaneousAudio`.
-
-**Behavior**:
-
-| Item | Description |
-|------|-------------|
-| Scope | SDK auto-playback of simultaneous-interpretation downlink `simultaneous_audio` |
-| Relation to init config | Still constrained by `enableDefaultPlaySimultaneousAudio = false`; the runtime toggle cannot enable playback when that init flag is `false` |
-| When disabled | Auto-playback stops (`AgentAudioEvent` is deprecated — no PCM event callback) |
-
-```kotlin
-val aiClient = AiAssistantClient.getInstance()
-
-// User turns off translated audio playback (takes effect immediately)
-aiClient.setTranslationAudioPlaybackEnabled(false)
-
-// Query current state
-val playbackEnabled = aiClient.isTranslationAudioPlaybackEnabled()
-
-// Start a new real-time translation session
-aiClient.startAiTranslation(
-    from = 140,
-    toList = listOf(47),
-    reqId = System.currentTimeMillis(),
-    audioFormat = GlassesConstant.AI_TRANSLATION_AUDIO_FORMAT_RAW_PCM,
-)
-aiClient.startReceivingAudio(
-    GlassesConstant.AI_ASSISTANT_TYPE_LISTEN_MODE_SIMULTANEOUS_INTERPRETATION,
-    language = 140,
-)
-```
-
-Demo: the real-time translation bottom controls in `TranslatorScreen` include a “Translation playback: On / Off” toggle, mapped to `TranslatorViewModel.toggleTranslationAudioPlayback()`.
-
-**Real-time translation record-and-play (echo and routing)**: Under `AI_ASSISTANT_TYPE_LISTEN_MODE_SIMULTANEOUS_INTERPRETATION`, the SDK branches automatically by output device (`TranslationSimultaneousAudioPolicy`):
-- **Bluetooth A2DP / wired headset**: `MODE_NORMAL` + `VOICE_RECOGNITION`; downlink prefers A2DP when `simultaneousInterpretationPlaybackPreferA2dp = true`.
-- **Phone speaker**: `MODE_IN_COMMUNICATION` + `VOICE_COMMUNICATION`; the app calls `bindSimultaneousInterpretationCaptureSession(audioSessionId)` to share the session with the SDK, and enables hardware `AcousticEchoCanceler` to reduce translated audio being picked up by the microphone.
-
-Demo: `AiAssistantClient.resolveSimultaneousInterpretationAudioPolicy()` → `StreamAudioRecorder.start(simultaneousPolicy=...)`; on speaker, bind the session; on pause/end, call `clearSimultaneousInterpretationCaptureSession()`.
-
-**Event subscription** (`AiAssistantClient.aiAgentEventFlow()`):
-
-| Type | Event | Description |
-|------|-------|-------------|
-| `AiTranslationEvent` | `AiTranslationResult` | Translated text |
-| | `Failed` | Translation error |
-| `AgentEvent` | `AiAssistantConnectState` | AI service connection state |
-
-### Custom LLM (implemented by the host app)
-To enable custom mode, please contact the development team.
-
-- `GlassesManage.startAiAssistant`: start recording
-  - `AudioStateEvent.ReceivingAudioData`: continuous audio input
-- `GlassesManage.stopAiAssistant()`: stop recording
-- `GlassesManage.interruptAiAssistant()`: interrupt recording
-- `GlassesManage.takePicture(true)`: AI image recognition (`takePhotoOnly = true` sends image to the app; `false` saves on glasses — see [11.8 Device-side capture](#8-device-side-capture-and-photo))
-  - callback events: `CmdResultEvent.ImageData` / `CmdResultEvent.ImageFile`
+This main README only keeps device-side cross-references (e.g. auto-pause AI during Wi-Fi exclusive sessions, or `GlassesManage.startAiAssistant` / `takePicture` for custom LLMs). See the AI guide for implementation details.
 
 ---
 
-## 9. Live Streaming
+## 8. Live Streaming
 
 The glasses start RTSP streaming; the phone app subscribes to `LiveEvent` for the URL, previews locally, or re-pushes to a third-party platform (Demo supports Douyin live).
 
-> **AI service**: The SDK **pauses the AI service** before live start and **automatically resumes it** after `stopLiveStreaming()`, live failure (`LiveEvent.Failed` / `PreviewFailed` / `Disconnected`), or stop (`RespStop`). See [7.1.1](#711-ai-service-during-wi-fi-usage).
+> **AI service**: The SDK **pauses the AI service** before live start and **automatically resumes it** after `stopLiveStreaming()`, live failure (`LiveEvent.Failed` / `PreviewFailed` / `Disconnected`), or stop (`RespStop`). See [AI guide §4.1](AI-README-en.md#41-ai-service-during-wi-fi-usage).
 
 **Prerequisites** (`startLiveStreaming` validates in SDK; failures emit `LiveEvent.Failed`):
 
@@ -1123,6 +647,14 @@ The glasses start RTSP streaming; the phone app subscribes to `LiveEvent` for th
 - Phone **cellular data enabled** (3214; checks the system toggle, not the current Internet connection; used for third-party platform API / RTMP push)
 
 Some channels also require Wi‑Fi / location permissions (see the Demo live page).
+
+> **System network-switching reminder (important)**  
+> Live streaming requires the phone to join the glasses Wi‑Fi hotspot (SoftAP) for pull, and may use cellular for third-party platforms. If Android smart network switching is enabled, the system may switch networks mid-stream and disconnect preview / push.  
+> Ask users (or document in your integration guide) to turn off similar settings, for example:  
+> - **WLAN+** / **Smart multi-network switching** / **Dual-channel smart network**  
+> - **WLAN security detection** / **WLAN assistant**  
+> - **Auto-switch to mobile data when WLAN has no Internet** / **Network acceleration**, etc.  
+> Exact names vary by OEM (Huawei / Xiaomi / OPPO / vivo / Samsung, etc.) and OS version; look under WLAN / Mobile network / More connections. Disable these before going live to reduce unexpected disconnects from system-driven network switches.
 
 ```kotlin
 viewModelScope.launch {
@@ -1213,6 +745,8 @@ GlassesManage.stopLiveStreaming()
 | `startContentRes` | `@StringRes Int` | Notification body when the live service starts |
 | `networkDisconnectedTitleRes` | `@StringRes Int` | Notification title when the network disconnects |
 | `networkDisconnectedContentRes` | `@StringRes Int` | Notification body when the network disconnects |
+| `pushFailedTitleRes` | `@StringRes Int` | Notification title when push fails (e.g. live room closed by platform) (RTK smartwear ≥ 1.8.73) |
+| `pushFailedContentRes` | `@StringRes Int` | Notification body when push fails (RTK smartwear ≥ 1.8.73) |
 | `stopActionRes` | `@StringRes Int` | Notification action label to stop live streaming |
 | `smallIconRes` | `@DrawableRes Int` | Notification small icon |
 
@@ -1257,7 +791,7 @@ See [Section 13 · RTK SoftAP shared (3501–3505)](#rtk-softap-shared-errors-35
 
 > Demo: `LiveViewModel` + `LiveScreen`. Live capabilities and parameter parsing vary by channel (LY / RTK / TB, etc.) and firmware version. Confirm `SdkConfig.channel` before integration.
 
-### **9.6 Live Experience Config (Douyin Key / Package Name / Signing)**
+### **8.6 Live Experience Config (Douyin Key / Package Name / Signing)**
 
 To integrate Douyin live streaming, the Demo (`app` module) must use the **application package name, signing keystore (jks) and Douyin appId / appName** that match the registration on the Douyin Open Platform. To make switching between customers/channels easy, all these parameters are centralized in a local config file `douyin.properties` at the project root — **switch by editing the config, no code changes required**.
 
@@ -1296,7 +830,7 @@ To integrate Douyin live streaming, the Demo (`app` module) must use the **appli
 
 ---
 
-## 10. SDK Flow Events
+## 9. SDK Flow Events
 
 > **Connection state**: prefer `GlassesManage.connectionStateFlow()` for BLE/BT (see [section 5.2](#52-subscribe-ble--bt-state-recommended)). This section documents other `eventFlow` events: scan, sync, OTA, commands, etc.
 
@@ -1328,7 +862,8 @@ To integrate Douyin live streaming, the Demo (`app` module) must use the **appli
 Manual BT reconnect (**LY / TB**): see [section 5.3](#53-manual-bt-reconnect-ly--tb).
 
 ### 3. Audio Stream - `AudioStateEvent`
-- Refer to the Demo
+- For custom LLM, see **[Glasses Raw Audio Stream](Glasses-Raw-Audio-Stream.md)** (LY / TB / RTK raw format, sample rate, channels, frame size)
+- Or refer to the Demo
 
 ### 4. Media Sync - `FileSyncEvent`
 - `ConnectSuccess`: Wi-Fi connected
@@ -1339,31 +874,11 @@ Manual BT reconnect (**LY / TB**): see [section 5.3](#53-manual-bt-reconnect-ly-
 - `BatchDownloadFinished(successCount, totalFileCount)`: batch download finished
 - `Failed(reason, code)`: sync failed
 
-### 5. AI Assistant - `AgentEvent`
-- `AgentEvent.AiAssistantConnectState`: AI service connection state
-- `AgentEvent.AiAssistantResult`: AI chat result; payload is `AiChatMessageDTO` (see [section 7.2](#72-event-subscription))
-- `AgentEvent.AiScheduleResult`: MCP schedule result
-- `AgentEvent.ImageTransLangListResult(requestId, languageList)`: image translation language list
-- `AgentEvent.ImageTransResult(requestId, imageBase64)`: image translation result
-- `AgentEvent.ImageTransFailEvent(requestId, code, msg)`: image translation failure
-- `AgentEvent.VoiceRoomParamsEvent(requestId, params)` / `VoiceRoomParamsFailEvent(requestId, code, msg)`: voice room parameter result
-- `AgentEvent.CallConnected` / `CallDisconnected`: call connected / disconnected
-- `AgentEvent.RemoteVideoStateEvent`: remote video mute state
-- `AgentEvent.RemoteLanguageEvent`: remote language change
-- `AgentEvent.ReconnectRequired`: business layer should trigger reconnect
-- `AgentEvent.DeviceAiServiceError`: device-side AI service error
----
+### 5–7. AI-related events
 
-### 6. AI Translation - `AiTranslationEvent`
-- `AiTranslationResult`: translated text result
-- `Failed`: error
-
-### 7. AI Audio Stream - `AgentAudioEvent` (deprecated)
-
-> **`AgentAudioEvent` is deprecated and removed from the SDK**. It is no longer delivered via `aiAgentEventFlow()`. Downlink audio is played inside the SDK, controlled by `enableDefaultPlaySimultaneousAudio` / `enableDefaultPlayAgentAudio` and `setTranslationAudioPlaybackEnabled` / `setAgentAudioPlaybackEnabled`. Text and business results continue via `AgentEvent` / `AiTranslationEvent`.
+AI assistant / translation / audio events (`AgentEvent`, `AiTranslationEvent`, etc.) are delivered via `AiAssistantClient.aiAgentEventFlow()`. See **[AI guide §10](AI-README-en.md#10-ai-event-summary)**.
 
 ---
-
 ### 8. OTA Upgrade - `OTAEvent`
 - `Start`: OTA started
 - `Progress`: OTA progress
@@ -1435,9 +950,9 @@ when (event) {
 
 ---
 
-## 11. Device Settings
+## 10. Device Settings
 The SDK exposes device setting read/write APIs through `GlassesManage`, including LED, gestures, wear detection, volume, time sync, and more.
-**Result callbacks**: collect `GlassesEvent` from `GlassesManage.eventFlow()` and focus on `CmdResultEvent` subclasses, consistent with [Section 10](#10-sdk-flow-events).
+**Result callbacks**: collect `GlassesEvent` from `GlassesManage.eventFlow()` and focus on `CmdResultEvent` subclasses, consistent with [Section 9](#9-sdk-flow-events).
 
 ---
 
@@ -1604,17 +1119,17 @@ GlassesManage.setLifePhotoConfig(
 **Callback events**:
 - Photo / recognition: `CmdResultEvent.ImageData` (raw bytes) or `CmdResultEvent.ImageFile` (local file path, channel-dependent)
 - Life-photo config (RTK): `CmdResultEvent.LifePhotoConfigResult(success)`
-- Custom LLM recording: see [Custom LLM](#custom-llm-implemented-by-the-host-app) and `AudioStateEvent`
+- Custom LLM recording: see [Glasses Raw Audio Stream](Glasses-Raw-Audio-Stream.md) (LY / TB / RTK format, sample rate, frame size) and `AudioStateEvent`
 
 > Resolution must be supported by the sensor; `jpegQuality` is 1–9; `rotationDegrees` only 0/90/180/270. No-op on LY / TB.
 
 ---
 
-## 12. OTA Upgrade
+## 11. OTA Upgrade
 
-BLE must be connected first. Progress is delivered via `OTAEvent` on `GlassesManage.eventFlow()` (see [Section 10](#8-ota-upgrade---otaevent)).
+BLE must be connected first. Progress is delivered via `OTAEvent` on `GlassesManage.eventFlow()` (see [Section 9](#8-ota-upgrade---otaevent)).
 
-> **AI service**: The SDK **pauses the AI service** before OTA and **automatically resumes it** after `OTAEvent.Success` / `Failed` / `Cancelled`. Same behavior as media sync and live when Wi-Fi is in use. See [7.1.1](#711-ai-service-during-wi-fi-usage).
+> **AI service**: The SDK **pauses the AI service** before OTA and **automatically resumes it** after `OTAEvent.Success` / `Failed` / `Cancelled`. Same behavior as media sync and live when Wi-Fi is in use. See [AI guide §4.1](AI-README-en.md#41-ai-service-during-wi-fi-usage).
 
 ```kotlin
 GlassesManage.startOTA(
@@ -1689,13 +1204,13 @@ Provide at least BT or WiFi; both may be upgraded in one call. For BT-only, pass
 2. If BT is included: push the BT bin (no `OTAEvent.Progress` during this phase)
 3. If WiFi is included: SDK extracts the zip and pushes each WiFi package per `ota.json` (`OTAStage.VERIFY` progress)
 4. DFU unified activation (`OTAStage.OTA` progress)
-5. Results are delivered via `OTAEvent` on `GlassesManage.eventFlow()` (see [Section 10](#8-ota-upgrade---otaevent))
+5. Results are delivered via `OTAEvent` on `GlassesManage.eventFlow()` (see [Section 9](#8-ota-upgrade---otaevent))
 
 **RTK OTA error codes**: package / DFU — [36xx](#rtk-ota--dfu-errors-3601---3608); SoftAP enable / hotspot join — [35xx](#rtk-softap-shared-errors-3501---3505) (shared with live and media sync). Default messages: `RtkOtaErrors.defaultReason(code)`, `RtkSoftApErrors.defaultReason(code)`.
 
 Demo: `UpdateViewModel.startRtkOtaUpgrade()` supports selecting a BT bin, a WiFi zip, or both.
 
-## 13. Error Codes
+## 12. Error Codes
 
 Error codes are defined in `GlassesConstant`. Read them from `event.code` or `Failed(reason, code)` in callbacks.
 
@@ -1784,11 +1299,8 @@ Default messages and Wi‑Fi join failure classification: `com.fission.wear.glas
 | 4005 | ERROR_CODE_OTA_FILE_OR_VERSION_INVALID | Invalid OTA resource or version (LY ISP OTA) |
 
 ### AI assistant errors (500001 - 500003)
-| Error Code | Name | Description |
-|:-------:|:------|:------|
-| 500001 | AIErrorCode.DUPLICATE_CONNECTION | Duplicate connection |
-| 500002 | AIErrorCode.DEVICE_NOT_AUTHORIZED | Device not authorized |
-| 500003 | AIErrorCode.SERVER_KEY_ERROR | Server key error |
+
+See **[AI guide §11](AI-README-en.md#11-error-codes)**.
 
 ### Live streaming errors (3201 - 3214)
 

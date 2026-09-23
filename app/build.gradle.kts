@@ -123,6 +123,7 @@ dependencies {
     implementation(libs.glasses.sdk.rtk)
     implementation(libs.glasses.sdk.tb)
     implementation(libs.bundles.media3)
+    implementation(libs.libvlc)
     coreLibraryDesugaring(libs.android.desugarJdkLibs)
     implementation(fileTree(mapOf("dir" to "libs", "include" to listOf("*.aar"))))
 }

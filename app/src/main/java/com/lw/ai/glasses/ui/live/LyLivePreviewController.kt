@@ -4,6 +4,10 @@ import android.content.Context
 import android.net.Network
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.launch
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
@@ -22,7 +26,10 @@ import com.fission.wear.glasses.sdk.live.LivePreviewCallback
 import com.fission.wear.glasses.sdk.util.FissionLogUtils
 
 /**
- * Demo 侧 LY 直播预览：ExoPlayer RTSP + SDK 返回的 AP [Network.socketFactory] 分流。
+ * Demo 侧 LY 直播预览：统一走 RTSP 中继 + ExoPlayer。
+ *
+ * 中继将眼镜 RTSP（S 系列 TCP / T 系列 UDP RTP）转为 localhost TCP interleaved，
+ * ExoPlayer 连 localhost 即可，无需 bindProcessToNetwork，蜂窝推流不受影响。
  */
 @UnstableApi
 class LyLivePreviewController(
@@ -39,6 +46,17 @@ class LyLivePreviewController(
     private var pendingPreview: PendingPreview? = null
     private var playTimeoutRunnable: Runnable? = null
     private var released = false
+    private var relayServer: RtspRelayServer? = null
+
+    // ── 卡顿自恢复：T 系列走 TCP 后，移动导致 WiFi 吞吐骤降 → media3 长时间 BUFFERING → 冻结。
+    //    BUFFERING 持续超过阈值即重载 RTSP 源，重新对齐直播边缘并拿到新关键帧。
+    private var lastLocalUrl: String? = null
+    private var recoveryRunnable: Runnable? = null
+    private var recoveryAttempts = 0
+    private var bufferingSinceMs = 0L
+
+    /** 当前预览是否启用音轨（由 startPreview 传入，运行时可切换）。 */
+    private var audioEnabled = false
 
     private data class PendingPreview(val rtspUrl: String, val apNetwork: Network)
 
@@ -71,21 +89,52 @@ class LyLivePreviewController(
         previewCallback = callback
     }
 
-    fun startPreview(rtspUrl: String, apNetwork: Network) {
-        mainHandler.post {
-            if (released) return@post
-            if (playerView == null) {
-                pendingPreview = PendingPreview(rtspUrl, apNetwork)
-                FissionLogUtils.d(TAG, "ExoPlayer startPreview deferred, waiting for view url=$rtspUrl")
-                return@post
+    fun startPreview(rtspUrl: String, apNetwork: Network, enableAudio: Boolean = false) {
+        audioEnabled = enableAudio
+        startRelayAndPreview(rtspUrl, apNetwork)
+    }
+
+    /**
+     * 启动 RTSP 中继（bind AP 拉流 → localhost TCP interleaved），
+     * 然后 ExoPlayer 连 localhost，无需 bindProcessToNetwork。
+     */
+    private fun startRelayAndPreview(upstreamUrl: String, apNetwork: Network) {
+        stopRelay()
+        val relay = RtspRelayServer(applicationContext, upstreamUrl, apNetwork, audioEnabled)
+        relayServer = relay
+        FissionLogUtils.i(TAG, "starting RTSP relay for $upstreamUrl")
+        GlobalScope.launch(Dispatchers.IO) {
+            try {
+                val localUrl = relay.start()
+                FissionLogUtils.i(TAG, "relay ready: $localUrl")
+                mainHandler.post {
+                    if (released) return@post
+                    if (playerView == null) {
+                        pendingPreview = PendingPreview(localUrl, apNetwork)
+                        FissionLogUtils.d(TAG, "ExoPlayer startPreview deferred, waiting for view url=$localUrl")
+                        return@post
+                    }
+                    startPreviewInternal(localUrl, apNetwork)
+                }
+            } catch (e: Exception) {
+                FissionLogUtils.e(TAG, "relay start failed: ${e.message}")
+                mainHandler.post {
+                    previewCallback?.onPreviewFailed(
+                        GlassesConstant.ERROR_CODE_LIVE_PREVIEW_START_FAILED,
+                    )
+                }
             }
-            startPreviewInternal(rtspUrl, apNetwork)
         }
     }
 
-    private fun startPreviewInternal(rtspUrl: String, apNetwork: Network) {
+    private fun stopRelay() {
+        relayServer?.stop()
+        relayServer = null
+    }
+
+    private fun startPreviewInternal(localUrl: String, apNetwork: Network) {
         playerView?.post {
-            playOnApNetwork(rtspUrl, apNetwork)
+            playViaRelay(localUrl)
         }
     }
 
@@ -100,11 +149,12 @@ class LyLivePreviewController(
             FissionLogUtils.i(TAG, "Media3 LogLevel=ALL；RTSP 信令见 logcat tag=RtspClient")
         }
         val loadControl = DefaultLoadControl.Builder()
-            .setBufferDurationsMs(1_500, 5_000, 500, 1_000)
+            // 加大缓冲：良好 WiFi 期积累余量，抵消移动时的短时吞吐骤降（减少 2↔3 抖动）
+            .setBufferDurationsMs(2_000, 8_000, 500, 1_500)
             .build()
         val trackSelector = DefaultTrackSelector(applicationContext).apply {
             parameters = buildUponParameters()
-                .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, true)
+                .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, !audioEnabled)
                 .build()
         }
         return ExoPlayer.Builder(applicationContext)
@@ -117,19 +167,29 @@ class LyLivePreviewController(
                     override fun onPlaybackStateChanged(playbackState: Int) {
                         FissionLogUtils.d(
                             TAG,
-                            "ExoPlayer state=$playbackState isPlaying=${player.isPlaying}",
+                            "ExoPlayer state=$playbackState isPlaying=${player.isPlaying} " +
+                                "playWhenReady=${player.playWhenReady}",
                         )
-                        if (playbackState == Player.STATE_ENDED) {
-                            FissionLogUtils.w(TAG, "ExoPlayer ended unexpectedly")
-                            previewCallback?.onPreviewFailed(
-                                GlassesConstant.ERROR_CODE_LIVE_PREVIEW_START_FAILED,
-                            )
+                        when (playbackState) {
+                            Player.STATE_BUFFERING -> if (previewStarted) scheduleRebufferRecovery()
+                            Player.STATE_READY -> cancelRebufferRecovery()
+                            Player.STATE_ENDED -> {
+                                cancelRebufferRecovery()
+                                FissionLogUtils.w(TAG, "ExoPlayer ended unexpectedly")
+                                previewCallback?.onPreviewFailed(
+                                    GlassesConstant.ERROR_CODE_LIVE_PREVIEW_START_FAILED,
+                                )
+                            }
+                        }
+                        if (playbackState == Player.STATE_READY && !firstFrameRendered) {
+                            FissionLogUtils.i(TAG, "ExoPlayer READY (awaiting first frame)")
                         }
                     }
 
                     override fun onRenderedFirstFrame() {
                         FissionLogUtils.i(TAG, "ExoPlayer first frame rendered")
                         firstFrameRendered = true
+                        recoveryAttempts = 0 // 播放恢复成功，清零自恢复计数
                         onPreviewPlaying()
                     }
 
@@ -166,38 +226,94 @@ class LyLivePreviewController(
         cancelPlayTimeout()
         if (previewStarted) return
         previewStarted = true
-        FissionLogUtils.i(TAG, "ExoPlayer preview started")
+        FissionLogUtils.i(TAG, "LY local preview started (via relay)")
         previewCallback?.onPreviewStarted()
     }
 
-    private fun playOnApNetwork(rtspUrl: String, apNetwork: Network) {
+    /**
+     * ExoPlayer 连 relay 的 localhost URL。
+     * relay 已处理所有协议改写（SDP/Content-Base/PLAY URL/Session timeout），
+     * 且提供 TCP interleaved RTP，所以 forceRtpTcp=true，无需 socketFactory。
+     */
+    private fun playViaRelay(localUrl: String) {
         if (released) return
         val player = ensurePlayerOnMainThread()
         previewStarted = false
         firstFrameRendered = false
+        lastLocalUrl = localUrl
+        recoveryAttempts = 0
         cancelPlayTimeout()
+        cancelRebufferRecovery()
         player.stop()
         player.clearMediaItems()
         player.trackSelectionParameters = TrackSelectionParameters.Builder(applicationContext)
-            .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, true)
+            .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, !audioEnabled)
             .build()
-        val mediaSource = RtspMediaSource.Factory()
-            .setForceUseRtpTcp(true)
-            .setTimeoutMs(RTSP_TIMEOUT_MS)
-            // 眼镜 RTSP(LIVE555) 只允许 PLAY 真实流(Content-Base=00000001)，PLAY xxx.mov 恒 404；
-            // 这里保留 DESCRIBE/连接在 xxx.mov(触发推流)，把出向 PLAY/keep-alive 改写为 Content-Base，
-            // 使 SETUP 与 PLAY 同流→200，且 keep-alive 打在会话真实流上避免超时断流；底层仍走 AP 分流。
-            .setSocketFactory(RtspPlayRewriteSocketFactory(apNetwork.socketFactory))
-            .setDebugLoggingEnabled(RTSP_DEBUG)
-            .createMediaSource(MediaItem.fromUri(rtspUrl))
-        FissionLogUtils.i(
-            TAG,
-            "ExoPlayer RTSP via AP socketFactory network=$apNetwork url=$rtspUrl (video-only)",
-        )
-        player.setMediaSource(mediaSource)
+        FissionLogUtils.i(TAG, "ExoPlayer RTSP via relay url=$localUrl forceRtpTcp=true audio=$audioEnabled")
+        player.setMediaSource(buildRtspMediaSource(localUrl))
         player.prepare()
         player.playWhenReady = true
-        scheduleFirstFrameTimeout(rtspUrl)
+        scheduleFirstFrameTimeout(localUrl)
+    }
+
+    private fun buildRtspMediaSource(localUrl: String): RtspMediaSource =
+        RtspMediaSource.Factory()
+            .setForceUseRtpTcp(true)
+            .setTimeoutMs(RTSP_TIMEOUT_MS)
+            .setDebugLoggingEnabled(RTSP_DEBUG)
+            .createMediaSource(MediaItem.fromUri(localUrl))
+
+    /** BUFFERING 持续超过 [REBUFFER_RECOVERY_MS] 仍未恢复 → 判定冻结，触发重载。 */
+    private fun scheduleRebufferRecovery() {
+        if (recoveryRunnable != null) return
+        bufferingSinceMs = SystemClock.elapsedRealtime()
+        val r = Runnable {
+            recoveryRunnable = null
+            attemptRebufferRecovery()
+        }
+        recoveryRunnable = r
+        mainHandler.postDelayed(r, REBUFFER_RECOVERY_MS)
+    }
+
+    private fun cancelRebufferRecovery() {
+        recoveryRunnable?.let { mainHandler.removeCallbacks(it) }
+        recoveryRunnable = null
+        bufferingSinceMs = 0L
+    }
+
+    private fun attemptRebufferRecovery() {
+        if (released || !previewStarted) return
+        val url = lastLocalUrl ?: return
+        val player = exoPlayer ?: return
+        // 若已自行恢复（非 BUFFERING）则跳过
+        if (player.playbackState != Player.STATE_BUFFERING) return
+        recoveryAttempts++
+        if (recoveryAttempts > MAX_RECOVERY_ATTEMPTS) {
+            FissionLogUtils.e(
+                TAG,
+                "[RECOVER] buffering persists after $MAX_RECOVERY_ATTEMPTS reloads; " +
+                    "WiFi throughput too low → give up",
+            )
+            cancelRebufferRecovery()
+            previewCallback?.onPreviewFailed(
+                GlassesConstant.ERROR_CODE_LIVE_GLASSES_AP_LINK_LOST,
+            )
+            return
+        }
+        val stallMs = SystemClock.elapsedRealtime() - bufferingSinceMs
+        FissionLogUtils.w(
+            TAG,
+            "[RECOVER] buffering ${stallMs}ms > ${REBUFFER_RECOVERY_MS}ms → reload RTSP " +
+                "(attempt $recoveryAttempts/$MAX_RECOVERY_ATTEMPTS)",
+        )
+        firstFrameRendered = false
+        cancelPlayTimeout()
+        player.stop()
+        player.clearMediaItems()
+        player.setMediaSource(buildRtspMediaSource(url))
+        player.prepare()
+        player.playWhenReady = true
+        scheduleFirstFrameTimeout(url)
     }
 
     private fun isApNetworkLostError(error: PlaybackException): Boolean {
@@ -214,11 +330,11 @@ class LyLivePreviewController(
         return false
     }
 
-    private fun scheduleFirstFrameTimeout(rtspUrl: String) {
+    private fun scheduleFirstFrameTimeout(localUrl: String) {
         cancelPlayTimeout()
         playTimeoutRunnable = Runnable {
             if (!firstFrameRendered && !released) {
-                FissionLogUtils.e(TAG, "ExoPlayer first-frame timeout (15s) url=$rtspUrl")
+                FissionLogUtils.e(TAG, "ExoPlayer first-frame timeout (${FIRST_FRAME_TIMEOUT_MS}ms) url=$localUrl")
                 previewCallback?.onPreviewFailed(
                     GlassesConstant.ERROR_CODE_LIVE_PREVIEW_START_FAILED,
                 )
@@ -233,23 +349,27 @@ class LyLivePreviewController(
     }
 
     fun stop() {
+        stopRelay()
         mainHandler.post {
             previewStarted = false
             firstFrameRendered = false
             pendingPreview = null
             cancelPlayTimeout()
+            cancelRebufferRecovery()
             exoPlayer?.stop()
             exoPlayer?.clearMediaItems()
         }
     }
 
     fun release() {
+        stopRelay()
         mainHandler.post {
             released = true
             previewStarted = false
             firstFrameRendered = false
             pendingPreview = null
             cancelPlayTimeout()
+            cancelRebufferRecovery()
             detachPreviewViewInternal()
             exoPlayer?.release()
             exoPlayer = null
@@ -275,11 +395,16 @@ class LyLivePreviewController(
         }
     }
 
-    private companion object {
+    companion object {
         private const val TAG = "LyLivePreviewController"
-        // RTSP 信令调试开关：需要抓 RtspClient 的 OPTIONS/DESCRIBE/SETUP/PLAY 信令时临时置 true。
         private const val RTSP_DEBUG = false
         private const val RTSP_TIMEOUT_MS = 120_000L
-        private const val FIRST_FRAME_TIMEOUT_MS = 15_000L
+        private const val FIRST_FRAME_TIMEOUT_MS = 25_000L
+
+        /** BUFFERING 超过此时长判定为冻结，触发 RTSP 重载自恢复。 */
+        private const val REBUFFER_RECOVERY_MS = 6_000L
+
+        /** 连续重载上限；超过则判定链路不可用并上报失败（成功出帧后计数清零）。 */
+        private const val MAX_RECOVERY_ATTEMPTS = 3
     }
 }

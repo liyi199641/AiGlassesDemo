@@ -185,8 +185,10 @@ fun AiAssistantScreen(
                 streamingMessageId = uiState.streamingMessageId,
                 typewriterRevision = uiState.typewriterRevision,
                 playingAnswerAudioPath = uiState.playingAnswerAudioPath,
+                playingQuestionAudioPath = uiState.playingQuestionAudioPath,
                 isAiDialogueInProgress = uiState.isAiDialogueInProgress,
                 onPlayAnswerAudio = viewModel::playAnswerAudio,
+                onPlayQuestionAudio = viewModel::playQuestionAudio,
                 getTypewriterProgress = viewModel::getTypewriterProgress,
                 onTypewriterProgressUpdate = viewModel::updateTypewriterProgress,
                 modifier = Modifier
@@ -317,8 +319,10 @@ private fun ConversationList(
     streamingMessageId: Long?,
     typewriterRevision: Int,
     playingAnswerAudioPath: String?,
+    playingQuestionAudioPath: String?,
     isAiDialogueInProgress: Boolean,
     onPlayAnswerAudio: (String) -> Unit,
+    onPlayQuestionAudio: (String) -> Unit,
     getTypewriterProgress: (Long) -> StreamState,
     onTypewriterProgressUpdate: (Long, Int?, Int?) -> Unit,
     modifier: Modifier = Modifier
@@ -361,8 +365,10 @@ private fun ConversationList(
                     onTypewriterProgressUpdate = { questionLength, answerLength ->
                         onTypewriterProgressUpdate(message.timestamp, questionLength, answerLength)
                     },
+                    isQuestionAudioPlaying = playingQuestionAudioPath == message.questionAudioPath,
                     isAnswerAudioPlaying = playingAnswerAudioPath == message.answerAudioPath,
                     isAnswerAudioPlayable = !isAiDialogueInProgress,
+                    onPlayQuestionAudio = onPlayQuestionAudio,
                     onPlayAnswerAudio = onPlayAnswerAudio,
                 )
             }
@@ -377,25 +383,28 @@ private fun MessageBubble(
     enableTypewriter: Boolean,
     typewriterProgress: StreamState,
     onTypewriterProgressUpdate: (questionLength: Int?, answerLength: Int?) -> Unit,
+    isQuestionAudioPlaying: Boolean,
     isAnswerAudioPlaying: Boolean,
     isAnswerAudioPlayable: Boolean,
+    onPlayQuestionAudio: (String) -> Unit,
     onPlayAnswerAudio: (String) -> Unit,
 ) {
     Column(modifier = Modifier.fillMaxWidth()) {
+        // 仅在有 ASR 文本时展示问题气泡与录音；纯音频默认不显示。
+        val questionAudioPath = message.questionAudioPath
+            ?.takeIf { it.isNotBlank() && message.question.isNotEmpty() }
         if (message.question.isNotEmpty()) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.End
             ) {
-                MessageContent(
-                    content = message.question,
-                    type = message.questionType,
-                    isQuestion = true,
-                    enableAnimation = false,
-                    displayedLength = typewriterProgress.displayedQuestionLength,
-                    onAnimationEnd = {
-                        onTypewriterProgressUpdate(it, null)
-                    }
+                QuestionMessageCard(
+                    question = message.question,
+                    questionType = message.questionType,
+                    questionAudioPath = questionAudioPath,
+                    isQuestionAudioPlaying = isQuestionAudioPlaying,
+                    isQuestionAudioPlayable = isAnswerAudioPlayable,
+                    onPlayQuestionAudio = onPlayQuestionAudio,
                 )
             }
         }
@@ -441,6 +450,108 @@ private fun MessageBubble(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun QuestionMessageCard(
+    question: String,
+    questionType: String,
+    questionAudioPath: String?,
+    isQuestionAudioPlaying: Boolean,
+    isQuestionAudioPlayable: Boolean,
+    onPlayQuestionAudio: (String) -> Unit,
+) {
+    val backgroundColor = MaterialTheme.colorScheme.primaryContainer
+    val accentColor = if (isQuestionAudioPlayable) {
+        MaterialTheme.colorScheme.primary
+    } else {
+        MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.38f)
+    }
+    val hasText = question.isNotEmpty()
+    val hasAudio = questionAudioPath != null
+    val questionImage = stringResource(R.string.question_image)
+
+    Card(
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = backgroundColor),
+        modifier = Modifier.wrapContentWidth(),
+    ) {
+        val dividerColor = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.12f)
+        MaxChildWidthColumn(
+            modifier = Modifier,
+            showDivider = hasText && hasAudio,
+            divider = {
+                Box(
+                    modifier = Modifier
+                        .padding(horizontal = 12.dp)
+                        .fillMaxWidth()
+                        .height(1.dp)
+                        .background(dividerColor),
+                )
+            },
+            text = {
+                if (hasText) {
+                    if (questionType == "image") {
+                        AsyncImage(
+                            model = question,
+                            contentDescription = questionImage,
+                            modifier = Modifier
+                                .padding(horizontal = 12.dp, vertical = 10.dp)
+                                .widthIn(max = 240.dp)
+                                .clip(RoundedCornerShape(12.dp)),
+                            contentScale = ContentScale.Fit,
+                        )
+                    } else {
+                        Text(
+                            text = question,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+                        )
+                    }
+                }
+            },
+            audio = {
+                Column(
+                    modifier = Modifier
+                        .wrapContentWidth()
+                        .then(
+                            if (isQuestionAudioPlayable) {
+                                Modifier.clickable { onPlayQuestionAudio(questionAudioPath!!) }
+                            } else {
+                                Modifier
+                            },
+                        )
+                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.VolumeUp,
+                            contentDescription = stringResource(R.string.play_audio),
+                            tint = accentColor,
+                            modifier = Modifier.size(18.dp),
+                        )
+                        AnswerAudioWaveBars(
+                            tint = accentColor,
+                            isPlaying = isQuestionAudioPlaying,
+                        )
+                    }
+                    Text(
+                        text = questionAudioPath.orEmpty(),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.65f),
+                        modifier = Modifier
+                            .padding(top = 4.dp)
+                            .widthIn(max = 220.dp),
+                        maxLines = 2,
+                    )
+                }
+            },
+            hasText = hasText,
+            hasAudio = hasAudio,
+        )
     }
 }
 

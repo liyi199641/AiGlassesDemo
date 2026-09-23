@@ -355,6 +355,8 @@
     <string name="preview_in_progress">预览中</string>
     <string name="live_preview_mic">麦克风</string>
     <string name="live_preview_rotate">旋转画面</string>
+    <string name="live_verify_public_network">公网验证</string>
+    <string name="live_preview_audio_track">音轨</string>
     <string name="live_preview_audio_phone">手机</string>
     <string name="live_preview_audio_a2dp">A2DP</string>
     <string name="live_preview_a2dp_unavailable">直播时眼镜 A2DP 已断开（仅剩 SCO），无法切到蓝牙媒体出声，请用手机扬声器监听</string>

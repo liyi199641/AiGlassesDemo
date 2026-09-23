@@ -21,6 +21,16 @@ data class LiveUiState(
     val connectPhase: LiveConnectPhase = LiveConnectPhase.NONE,
     /** LY 方案仅支持本地预览，不支持参数配置与抖音推流。 */
     val isLyScheme: Boolean = false,
+    /** LY 方案下当前是否为 T 系列（T 系列预览画面无需旋转）。 */
+    val isLyTSeries: Boolean = false,
+    /**
+     * LY 方案预览音轨开关（恒为 false）。
+     * 音轨已从 UI 移除：S 系列开音轨重复收音、T 系列带宽不足会卡顿/冻结，均为设备侧限制，
+     * 详见 docs/LY直播预览-S与T系列方案差异.md。
+     */
+    val previewAudioEnabled: Boolean = false,
+    /** LY 方案预览画面旋转角度（客户端 graphicsLayer 旋转，S 默认 270，T 默认 0）。 */
+    val lyRotationDegrees: Int = 270,
     val streamingMode: LiveStreamingMode = LiveStreamingMode.PREVIEW,
     val isPlayingLocal: Boolean = false,
     val isDeviceStreaming: Boolean = false,
@@ -37,6 +47,8 @@ data class LiveUiState(
     val previewRotation: Int = 0,
     /** 手动推流模式下的 RTMP 地址 */
     val manualPushUrl: String = "",
+    /** 公网连通性验证结果（用于确认进程默认网络在蜂窝且可访问公网）。 */
+    val networkCheckResult: String? = null,
 ) {
     val showsLocalPreview: Boolean
         get() = streamingMode != LiveStreamingMode.PUSH

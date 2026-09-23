@@ -354,6 +354,8 @@
     <string name="preview_in_progress">Previewing</string>
     <string name="live_preview_mic">Microphone</string>
     <string name="live_preview_rotate">Rotate</string>
+    <string name="live_verify_public_network">Network</string>
+    <string name="live_preview_audio_track">Audio</string>
     <string name="live_preview_audio_phone">Phone</string>
     <string name="live_preview_audio_a2dp">A2DP</string>
     <string name="live_preview_a2dp_unavailable">Glasses A2DP is unavailable during live (only SCO left). Use phone speaker for preview audio.</string>
