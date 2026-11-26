@@ -45,7 +45,7 @@ AI 入口为 `AiAssistantClient`；设备侧采集 / 打断等与眼镜联动的
 | [AI 翻译](#6-ai-翻译) | **含两种子能力**（见下） | App 侧采麦 + `startAiTranslation` |
 | └ [对话翻译](#62-对话翻译) | 面对面：说完一句再出结果 | `AI_ASSISTANT_TYPE_LISTEN_MODE_TRANSLATION` |
 | └ [实时翻译](#63-实时翻译) | 听讲座 / 看电影等连续听译（同传） | `AI_ASSISTANT_TYPE_LISTEN_MODE_SIMULTANEOUS_INTERPRETATION` |
-| [音视频通话翻译](#7-音视频通话翻译) | 即构音/视频通话中的双边翻译（**独立功能**，≠ 实时翻译） | `getVoiceRoomParams` / `startCall` + `VOICE_TRANSLATION` |
+| [音视频通话翻译](#7-音视频通话翻译) | 即构音/视频通话中的双边翻译（**独立功能**，≠ 实时翻译；需额外引入 `sdk-ai-call`） | `getVoiceRoomParams` / `startCall` + `VOICE_TRANSLATION` |
 | [图片翻译](#8-图片翻译) | 上传图片 OCR + 译图 | `getImageTransLangList` / `imageTrans` |
 
 接入前请先完成：
@@ -122,7 +122,7 @@ AiAssistantClient.getInstance().connectAiAssistant(
 
 | 参数 | 类型 | 必填 | 默认值 | 说明 |
 |------|------|:----:|--------|------|
-| `context` | `Context` | 是 | — | 应用上下文，用于创建即构通话、图片翻译等组件。 |
+| `context` | `Context` | 是 | — | 应用上下文，用于图片翻译等；若已引入 `sdk-ai-call` 也会用于通话组件。 |
 | `channel` | `GlassesConstant.ChannelType` | 是 | — | AI 业务渠道，**建议与 `SdkConfig.channel` 保持一致**。 |
 | `aiModelType` | `GlassesConstant.AiModelVendor` | 否 | `DEFAULT` | 大模型供应商标识。 |
 | `serverEnvironment` | `GlassesConstant.ServerEnvironment` | 否 | `DEV` | 预置环境；`customServerEnvironment` 非空时忽略。 |
@@ -131,6 +131,9 @@ AiAssistantClient.getInstance().connectAiAssistant(
 | `enableDefaultPlayAgentAudio` | `Boolean` | 否 | `true` | 是否由 SDK 自动播放 **AI 对话的回复音频**。运行时可用 `setAgentAudioPlaybackEnabled`（见 [§5.4](#54-回复音频播放开关)）。 |
 | `translationAudioStorageDirName` | `String` | 否 | `"transAudioFiles"` | 翻译/对话录音落盘目录名。 |
 | `aiDialogueLanguage` | `Int` | 否 | `140` | AI 对话源语种 `langType`。见 [§5.5](#55-源语种)。 |
+| `aiDialogueMode` | `String` | 否 | `semi-auto` | AI 对话 listen 模式：`semi-auto` 一问一答；`auto` 连续全双工。 |
+| `aiProvider` | `String?` | 否 | `null` | 连续 `auto` 下引擎：`null` 自研（hello 不传 `ai_provider`）；`xueqiu` 雪球连续。`semi-auto` 应为 `null`。 |
+| `enablePlaybackAec` | `Boolean` | 否 | `false` | 是否启用眼镜麦 **playback 回声消除**（部分 LY 设备 AI 对话边播 TTS 边采麦时需要）。在 `connectAiAssistant` 时落地；运行时也可改 `AiAssistantWsUplinkConfig.uplinkPlaybackAecEnabled`。 |
 
 **`aiModelType`**：`DEFAULT` / `QWEN` / `GPT_5O_MINI` / `KIMI_V2`  
 **`serverEnvironment`**：`DEV` / `TEST` / `CHINA` / `EUROPE` / `SINGAPORE` / `CUSTOM`  
@@ -497,7 +500,13 @@ recorder.stop()
 
 ## **7. 音视频通话翻译**
 
-即构（Zego）音/视频通话中的**双边实时翻译**
+即构（Zego）音/视频通话中的**双边实时翻译**。
+
+> **依赖**：需额外引入 `sdk-ai-call`（并配置 `https://maven.zego.im`）。仅 AI 对话 / 实时翻译时不要引入该模块，也不会带上即构。
+
+```gradle
+implementation("com.fission.wear.glasses:sdk-ai-call:last_version")
+```
 
 | | 实时翻译（§6.3） | 音视频通话翻译（本节） |
 |--|------------------|------------------------|
@@ -721,16 +730,23 @@ pendingImageTransRequestId = aiClient.imageTrans(
 | `CallConnected` / `CallDisconnected` | 通话接通 / 断开 |
 | `RemoteVideoStateEvent` / `RemoteLanguageEvent` | 远端视频 / 语种 |
 | `ReconnectRequired` | 需 `manualReconnect()` |
-| `DeviceAiServiceError` | 设备侧 AI 错误 |
+| `DeviceAiServiceError` | WSS 门禁错误（500001–500005），SDK 停止自动重连 |
+| — | WSS 会话类错误见 `AiAssistantEvent.Failed`，§11 |
 
-### **10.3 AiTranslationEvent**
+### **10.3 AiAssistantEvent（WSS 错误）**
+
+| 事件 | 说明 |
+|------|------|
+| `Failed(reason, code)` | `type=error` 且 code 非 500001–500005（含 510xxx） |
+
+### **10.4 AiTranslationEvent**
 
 | 事件 | 说明 |
 |------|------|
 | `AiTranslationResult(data)` | **对话翻译、实时翻译、音视频通话翻译共用** |
 | `Failed(reason, code)` | 失败 |
 
-### **10.4 LocalVadEvent（可选）**
+### **10.5 LocalVadEvent（可选）**
 
 `SpeechStarted` / `SpeechEnded` — 手机端本地 VAD，可用于 UI 指示。
 
@@ -738,10 +754,20 @@ pendingImageTransRequestId = aiClient.imageTrans(
 
 ## **11. 错误码**
 
-| 错误码 | 名称 | 描述 |
+| 错误码 | 名称 | SDK 事件 |
 |:-------:|:------|:------|
-| 500001 | AIErrorCode.DUPLICATE_CONNECTION | 重复连接 |
-| 500002 | AIErrorCode.DEVICE_NOT_AUTHORIZED | 设备未授权 |
-| 500003 | AIErrorCode.SERVER_KEY_ERROR | 服务器密钥错误 |
+| 500001 | DUPLICATE_CONNECTION | `DeviceAiServiceError`，停自动重连 |
+| 500002 | DEVICE_NOT_AUTHORIZED | 同上 |
+| 500003 | SERVER_KEY_ERROR | 同上 |
+| 500004 | DEVICE_NOT_REGISTERED | 同上 |
+| 500005 | INVALID_APP_ID | 同上 |
+| 510000 | SESSION_ERROR | `AiAssistantEvent.Failed` |
+| 510001 | INVALID_REQUEST | 同上 |
+| 510002 | CAPABILITY_UNAVAILABLE | 同上 |
+| 510003 | UPSTREAM_SERVICE_ERROR | 同上 |
+| 510004 | AUTO_START_TIMEOUT | 同上（由上层处理） |
+| 510005 | RECOGNITION_SUBMIT_TIMEOUT | 同上 |
+| 510006 | REPLY_TIMEOUT | 同上 |
+| 510007 | UPSTREAM_RECOVERY_FAILED | 同上 |
 
 > 其它错误码见主文档 [§13](README.md#13-错误码说明)。

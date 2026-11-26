@@ -18,6 +18,8 @@ class AppDataManager @Inject constructor(
     companion object {
         const val DEFAULT_SDK_CHANNEL_NAME = "LY"
         const val DEFAULT_AUTO_CONNECT_AI = true
+        const val DEFAULT_AI_CONTINUOUS_DIALOGUE = true
+        const val DEFAULT_AI_CONTINUOUS_XUEQIU = false
     }
 
     private object AppKeys {
@@ -26,6 +28,8 @@ class AppDataManager @Inject constructor(
         val LOCAL_SERVER_WS_URL = stringPreferencesKey("local_server_ws_url")
         val SDK_CHANNEL = stringPreferencesKey("sdk_channel")
         val AUTO_CONNECT_AI = booleanPreferencesKey("auto_connect_ai")
+        val AI_CONTINUOUS_DIALOGUE = booleanPreferencesKey("ai_continuous_dialogue")
+        val AI_CONTINUOUS_XUEQIU = booleanPreferencesKey("ai_continuous_xueqiu")
     }
 
     val savedEnvironment: Flow<String?> = dataStore.data.map { preferences ->
@@ -103,6 +107,30 @@ class AppDataManager @Inject constructor(
     suspend fun saveAutoConnectAiEnabled(enabled: Boolean) {
         dataStore.edit { preferences ->
             preferences[AppKeys.AUTO_CONNECT_AI] = enabled
+        }
+    }
+
+    suspend fun getAiContinuousDialogueEnabled(): Boolean {
+        return dataStore.data.map { preferences ->
+            preferences[AppKeys.AI_CONTINUOUS_DIALOGUE] ?: DEFAULT_AI_CONTINUOUS_DIALOGUE
+        }.firstOrNull() ?: DEFAULT_AI_CONTINUOUS_DIALOGUE
+    }
+
+    suspend fun saveAiContinuousDialogueEnabled(enabled: Boolean) {
+        dataStore.edit { preferences ->
+            preferences[AppKeys.AI_CONTINUOUS_DIALOGUE] = enabled
+        }
+    }
+
+    suspend fun getAiContinuousXueqiuEnabled(): Boolean {
+        return dataStore.data.map { preferences ->
+            preferences[AppKeys.AI_CONTINUOUS_XUEQIU] ?: DEFAULT_AI_CONTINUOUS_XUEQIU
+        }.firstOrNull() ?: DEFAULT_AI_CONTINUOUS_XUEQIU
+    }
+
+    suspend fun saveAiContinuousXueqiuEnabled(enabled: Boolean) {
+        dataStore.edit { preferences ->
+            preferences[AppKeys.AI_CONTINUOUS_XUEQIU] = enabled
         }
     }
 

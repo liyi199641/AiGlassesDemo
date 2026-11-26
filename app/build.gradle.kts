@@ -24,7 +24,7 @@ val packagingEnabled: Boolean = cfg("CONFIG_ENABLED", "false").toBoolean()
 
 android {
     namespace = "com.lw.ai.glasses"
-    compileSdk = 36
+    compileSdk = 37
 
     signingConfigs {
         if (packagingEnabled) {
@@ -55,7 +55,7 @@ android {
         buildConfigField("String", "DOUYIN_CLIENT_KEY", "\"$douyinClientKey\"")
         buildConfigField("String", "DOUYIN_CLIENT_SECRET", "\"$douyinClientSecret\"")
         minSdk = 26
-        targetSdk = 36
+        targetSdk = 37
         versionCode = (System.currentTimeMillis() / 1000).toInt()
         versionName = "1.0"
 
@@ -119,6 +119,7 @@ dependencies {
     ksp(libs.hilt.android.compiler)
     implementation(project(":lib_core"))
     implementation(libs.glasses.sdk.core)
+    implementation(libs.glasses.sdk.aicall) // optional: A/V call translation (Zego)
     implementation(libs.glasses.sdk.ly)
     implementation(libs.glasses.sdk.rtk)
     implementation(libs.glasses.sdk.tb)

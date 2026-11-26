@@ -52,9 +52,6 @@ tools:targetApi="33" />
 <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 <uses-permission android:name="android.permission.WAKE_LOCK" />
 ```
-
----
-
 ## 2. Dependencies (Required)
 
 ### 2.0+ (recommended, modular)
@@ -63,13 +60,16 @@ Always add `sdk-core`, then optional scheme modules (one or more). `SdkConfig.ch
 
 ```gradle
 // Required
-implementation("com.fission.wear.glasses:sdk-core:last_version")
+implementation("com.fission.wear.glasses:sdk-core:2.0.3")
 implementation("io.reactivex.rxjava3:rxjava:3.1.6")
 
 // Optional (one or more)
-implementation("com.fission.wear.glasses:sdk-ly:last_version")    // LY
-implementation("com.fission.wear.glasses:sdk-rtk:last_version")   // RTK
-implementation("com.fission.wear.glasses:sdk-tb:last_version")  // TB
+implementation("com.fission.wear.glasses:sdk-ly:2.0.3")    // LY
+implementation("com.fission.wear.glasses:sdk-rtk:2.0.3")   // RTK
+implementation("com.fission.wear.glasses:sdk-tb:2.0.1")  // TB
+
+// Optional: A/V call translation (Zego). Skip if you only need AI dialogue / translation.
+implementation("com.fission.wear.glasses:sdk-ai-call:2.0.1")
 ```
 
 > **Minimum Android version**: Android 7.0 (API 24). Your app's `minSdk` must be at least 24.
@@ -92,6 +92,7 @@ dependencyResolutionManagement {
         google()
         mavenCentral()
         maven { url = uri("https://repo.repsy.io/mvn/linwear/android") }
+        // Required when using sdk-ai-call (A/V call translation)
         maven { url = uri("https://maven.zego.im") }
         // For sdk-tb, also add
         maven { url = uri("https://maven.topstepht.com/repository/maven-public/") }
@@ -125,7 +126,7 @@ android {
 | Module | Entry | Responsibility |
 |--------|-------|----------------|
 | Glasses SDK | `GlassesManage.initialize(SdkConfig)` | BLE scan/connect, device commands, OTA, media sync, etc. |
-| AI client | `AiAssistantClient.getInstance().initializeAiClient(AiAgentConfig)` | AI service, voice assistant, translation, image translation, Zego calls, etc. |
+| AI client | `AiAssistantClient.getInstance().initializeAiClient(AiAgentConfig)` | AI service, voice assistant, translation, image translation, etc. Zego calls require extra `sdk-ai-call` |
 
 Recommended order (see Demo: `LinWearApplication` + `AppStartupReconnectManager`):
 
@@ -280,7 +281,7 @@ Legend: ✓ supported · △ partial / differs by channel · — not supported (
 
 | API | LY | RTK | TB | Notes |
 |-----|:--:|:---:|:--:|-------|
-| `takePicture` | ✓ | ✓ | ✓ | |
+| `takePicture` | ✓ | ✓ | ✓ | RTK may pass [`ThumbnailPhotoConfig`](#thumbnailphotoconfig-rtk-ai-recognition-only) when `takePhotoOnly=true` (size / JPEG / shutter sound); LY / TB ignore it |
 | `setLifePhotoConfig` | — | ✓ | — | **RTK only**: life-photo resolution / JPEG / rotation |
 | `setWifiApConfig` | — | ✓ | — | **RTK only**: SoftAP SSID / password |
 | `startDeviceRecording` / `stopDeviceRecording` | ✓ | ✓ | ✓ | Audio |
@@ -401,6 +402,8 @@ GlassesManage.disConnect(unpair = true)
 ```
 
 > `unpair = true` (default): disconnect and remove the device from the phone’s Bluetooth paired list. Requires `BLUETOOTH_CONNECT` on Android 12+.
+
+> **Android 17 (API≥37)**: after connect success the SDK auto-requests Companion association (LY: BT/A2DP connected; RTK: BLE connected). On one-tap unpair it silently calls `CompanionDeviceManager.removeBond` when associated, otherwise reflects `removeBond`. On failure it emits `UnpairEvent.Failed(needManualSystemUnpair=true)` — guide the user to forget the device in system settings.
 
 ### 5.2 Subscribe BLE + BT State (Recommended)
 
@@ -858,6 +861,7 @@ To integrate Douyin live streaming, the Demo (`app` module) must use the **appli
 | | `Failed` | Connection failed |
 | `BtConnectEvent` | `Bonding` / `Bonded` / `BondFailed` | Classic BT pairing (LY, etc.; SDK-driven) |
 | | `A2dpConnected` / `HfpConnected`, etc. | Audio profile changes |
+| `UnpairEvent` | `Success` / `Failed` | One-tap unpair result; if `Failed.needManualSystemUnpair == true`, guide the user to forget the device in system settings (see [5.1](#51-connect--disconnect-ble)) |
 
 Manual BT reconnect (**LY / TB**): see [section 5.3](#53-manual-bt-reconnect-ly--tb).
 
@@ -1092,7 +1096,7 @@ Control glasses-side audio recording, video recording, and photo capture (BLE mu
 | `stopDeviceRecording()` | Stop glasses-side audio recording |
 | `startDeviceVideoRecording()` | Start glasses-side video recording |
 | `stopDeviceVideoRecording()` | Stop glasses-side video recording |
-| `takePicture(takePhotoOnly: Boolean)` | Take a photo. `true`: AI recognition, image sent to app; `false`: save on glasses storage |
+| `takePicture(takePhotoOnly: Boolean, thumbnailConfig: ThumbnailPhotoConfig = ThumbnailPhotoConfig.DEFAULT)` | Take a photo. `true`: AI recognition, image sent to app; `false`: save on glasses storage. [`thumbnailConfig`](#thumbnailphotoconfig-rtk-ai-recognition-only) is **RTK only** when `takePhotoOnly=true` (ignored on LY / TB) |
 | `setLifePhotoConfig(config: LifePhotoConfig)` | **RTK only**: configure life-photo params (resolution / JPEG quality / rotation). Async result: `CmdResultEvent.LifePhotoConfigResult` |
 
 ```kotlin
@@ -1102,7 +1106,20 @@ GlassesManage.stopDeviceRecording()
 GlassesManage.startDeviceVideoRecording()
 GlassesManage.stopDeviceVideoRecording()
 
-GlassesManage.takePicture(takePhotoOnly = true)   // AI recognition
+// AI recognition (default thumbnail: 960×720, quality 5)
+GlassesManage.takePicture(takePhotoOnly = true)
+
+// RTK: pass ThumbnailPhotoConfig for AI recognition (size / JPEG quality / shutter sound)
+GlassesManage.takePicture(
+    takePhotoOnly = true,
+    thumbnailConfig = ThumbnailPhotoConfig(
+        photoWidth = 960,
+        photoHeight = 720,
+        photoQuality = 5,              // 1–9
+        playTakePhotoSound = false,
+    ),
+)
+
 GlassesManage.takePicture(takePhotoOnly = false)  // save on glasses
 
 // RTK: configure life-photo params (call before takePicture(false) as needed)
@@ -1116,12 +1133,25 @@ GlassesManage.setLifePhotoConfig(
 )
 ```
 
+##### ThumbnailPhotoConfig (RTK AI recognition only)
+
+Maps to RTK `ThumbnailPhotoConfigInfo.Builder`. Used only by `takePicture(takePhotoOnly = true)`; ignored for `takePhotoOnly = false` and on LY / TB.
+
+| Field | Default | Description |
+|-------|---------|-------------|
+| `photoWidth` | `960` | Thumbnail width |
+| `photoHeight` | `720` | Thumbnail height |
+| `photoQuality` | `5` | JPEG quality, range 1–9 |
+| `playTakePhotoSound` | `true` | Whether to play shutter sound |
+
+> Capture type is fixed to thumbnail (`TYPE_TAKE_THUMBNAIL`); no extra config needed.
+
 **Callback events**:
 - Photo / recognition: `CmdResultEvent.ImageData` (raw bytes) or `CmdResultEvent.ImageFile` (local file path, channel-dependent)
 - Life-photo config (RTK): `CmdResultEvent.LifePhotoConfigResult(success)`
 - Custom LLM recording: see [Glasses Raw Audio Stream](Glasses-Raw-Audio-Stream.md) (LY / TB / RTK format, sample rate, frame size) and `AudioStateEvent`
 
-> Resolution must be supported by the sensor; `jpegQuality` is 1–9; `rotationDegrees` only 0/90/180/270. No-op on LY / TB.
+> Life Photo: resolution must be supported by the sensor; `jpegQuality` is 1–9; `rotationDegrees` only 0/90/180/270. `setLifePhotoConfig` is a no-op on LY / TB.
 
 ---
 
@@ -1245,7 +1275,7 @@ Error codes are defined in `GlassesConstant`. Read them from `event.code` or `Fa
 | 3003 | ERROR_CODE_WIFI_NEGOTIATION_TIMEOUT | Wi-Fi negotiation timeout |
 | 3004 | ERROR_CODE_WIFI_UNKNOWN_ERROR | Unknown Wi-Fi error |
 | 3005 | ERROR_CODE_WIFI_OPEN_ERROR | Failed to enable Wi-Fi AP hotspot (**LY channel**; RTK see 3501) |
-| 3006 | ERROR_CODE_WIFI_NO_PERMISSION | Missing Wi-Fi permissions: `ACCESS_FINE_LOCATION` not granted; on Android 13 (API 33)+ also requires `NEARBY_WIFI_DEVICES` |
+| 3006 | ERROR_CODE_WIFI_NO_PERMISSION | Missing Wi-Fi permissions: `ACCESS_FINE_LOCATION` not granted; on Android 13 (API 33)+ also requires `NEARBY_WIFI_DEVICES`; on **Android 17 (API 37)+ with targetSdk≥37** also requires `ACCESS_LOCAL_NETWORK` for glasses AP / LAN HTTP ([Local Network Permission](https://developer.android.com/privacy-and-security/local-network-permission)) |
 | 3007 | ERROR_CODE_WIFI_NO_OPEN_LOCATION | Location services not enabled |
 | 3008 | ERROR_CODE_WIFI_CLOSED | Wi-Fi is disabled |
 

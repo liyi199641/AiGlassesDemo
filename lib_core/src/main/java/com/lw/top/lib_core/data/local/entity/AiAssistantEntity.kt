@@ -13,6 +13,8 @@ data class AiAssistantEntity(
     val questionType: String,
     val answerType: String,
     val questionAudioPath: String? = null,
+    /** AI 识图本地照片路径；与 [question] 文本同属问句侧，展示在答案上方。 */
+    val questionImagePath: String? = null,
     val answerAudioPath: String? = null,
     val messageId: String? = null,
     val timestamp: Long = System.currentTimeMillis()

@@ -34,6 +34,10 @@
     <string name="auto_connect_ai_settings">AI 连接</string>
     <string name="auto_connect_ai_settings_hint">开启后，眼镜连接成功时将启用 AI 服务</string>
     <string name="auto_connect_ai_label">启用 AI</string>
+    <string name="ai_continuous_dialogue_label">AI 连续问答</string>
+    <string name="ai_continuous_dialogue_hint">默认开启自研连续问答：realtime 服务 + auto 模式。关闭为一问一答（voice + semi-auto）。切换时将断开并重连 AI 服务。</string>
+    <string name="ai_continuous_xueqiu_label">雪球连续</string>
+    <string name="ai_continuous_xueqiu_hint">仅在连续问答开启时有效：hello 携带 ai_provider=xueqiu，仍连接 realtime 服务。</string>
     <string name="environment_switch">环境切换</string>
     <string name="environment_switch_hint">选择后全局生效（已持久化存储）</string>
     <string name="sdk_channel_settings">SDK 渠道</string>
@@ -70,8 +74,8 @@
     <string name="local_base_url_scheme_invalid">Base URL 需以 http:// 或 https:// 开头</string>
     <string name="local_ws_empty">请输入自定义环境的 AI 服务地址</string>
     <string name="local_ws_scheme_invalid">AI 服务地址需以 ws:// 或 wss:// 开头</string>
-    <string name="local_base_url_placeholder">https://192.168.1.100:8080/</string>
-    <string name="local_ws_url_placeholder">ws://192.168.1.100:3000</string>
+    <string name="local_base_url_placeholder">https://aigc-dev.watch-devs.com</string>
+    <string name="local_ws_url_placeholder">wss://realtime-china.watch-devs.com/ai-agent/{Client-Id}/ai-voice?device-id={Device-Id}&amp;device-model={Device-Model}</string>
     <string name="env_dev">开发环境</string>
     <string name="env_test">测试环境</string>
     <string name="env_china">正式中国</string>
@@ -99,6 +103,15 @@
     <string name="take_picture">拍照</string>
     <string name="take_picture_for_ai">AI 识图拍照</string>
     <string name="take_picture_to_device">本地存储拍照</string>
+    <string name="thumbnail_photo_config_title">AI 识图拍照（仅 RTK）</string>
+    <string name="thumbnail_photo_config_hint">以下参数仅作用于「AI 识图拍照」。默认 960×720，质量 5。预设均为实机可行档；photoWidth 最大 2048，越界会回退到 640×480。</string>
+    <string name="thumbnail_photo_play_sound">播放快门声</string>
+    <string name="thumbnail_photo_presets">分辨率预设</string>
+    <string name="thumbnail_photo_width">宽度</string>
+    <string name="thumbnail_photo_height">高度</string>
+    <string name="thumbnail_photo_quality">JPEG 质量</string>
+    <string name="take_picture_to_device_section">本地存储拍照</string>
+    <string name="take_picture_to_device_section_hint">保存到眼镜本地，不受上方 AI 识图参数影响。</string>
     <string name="burst_test_title">连拍测试</string>
     <string name="burst_test_summary">连续本地存储拍照；每拍下一张后，必须等到待同步文件数量 +1 才拍下一张</string>
     <string name="burst_test_count_label">拍摄张数</string>
@@ -134,6 +147,10 @@
     <string name="ai_photo_ble_status_success">BLE 回传完成</string>
     <string name="ai_photo_ble_status_failed">BLE 回传失败</string>
     <string name="ai_photo_ble_size">图片大小：%1$s</string>
+    <string name="ai_photo_ble_resolution">回传分辨率：%1$d×%2$d</string>
+    <string name="ai_photo_ble_resolution_vs_request">回传：%1$d×%2$d · 请求：%3$d×%4$d</string>
+    <string name="ai_photo_ble_resolution_mismatch">回传尺寸与请求不一致（多为固件回退，如 640×480）。</string>
+    <string name="ai_photo_ble_resolution_unknown">回传分辨率：无法解析</string>
     <string name="ai_photo_ble_file_path">保存路径：%1$s</string>
     <string name="ai_photo_ble_ai_warning">AI 识图提示：%1$s</string>
     <string name="ai_photo_ble_preview">AI 识图照片预览</string>
@@ -189,6 +206,7 @@
 
     <string name="settings_title">设备设置</string>
     <string name="disconnect_connection">断开连接</string>
+    <string name="unpair_manual_system_hint">无法删除系统蓝牙配对，请到手机系统蓝牙设置中手动取消配对。</string>
     <string name="reboot_device">重启设备</string>
     <string name="reboot_device_confirm_message">确定要重启眼镜吗？</string>
     <string name="restore_factory">恢复出厂设置</string>
@@ -260,11 +278,15 @@
     <string name="agent_audio_playback_off">回复播放：关</string>
     <string name="toggle_agent_audio_playback">切换 AI 回复播放</string>
     <string name="ai_dialogue_language">对话语种</string>
+    <string name="ai_assistant_location_permission_hint">开启定位可让 AI 更好理解您的位置；未授权时经纬度将按 0 上报。</string>
+    <string name="ai_assistant_location_permission_action">开启定位</string>
     <string name="ai_assistant_device_control">设备 AI 控制</string>
     <string name="ai_assistant_dialogue_in_progress">AI 对话进行中</string>
 
     <string name="add_calendar_confirm_title">确认添加日程</string>
     <string name="ai_assistant_title">AI 助手</string>
+    <string name="ai_assistant_ws_error_title">AI 服务异常</string>
+    <string name="ai_assistant_ws_error_body">%1$s\n（错误码 %2$d）</string>
     <string name="empty_ai_conversation">暂无对话，快给眼镜提问吧</string>
     <string name="question_image">提问图片</string>
     <string name="answer_image">回答图片</string>
@@ -424,7 +446,7 @@
     <string name="error_ly_wifi_negotiation_timeout">Wi-Fi 协商超时</string>
     <string name="error_ly_wifi_unknown">Wi-Fi 连接失败</string>
     <string name="error_ly_wifi_open_error">开启眼镜 Wi-Fi 热点失败</string>
-    <string name="error_ly_wifi_no_permission">缺少 Wi-Fi / 定位权限</string>
+    <string name="error_ly_wifi_no_permission">缺少 Wi-Fi / 定位 / 本地网络权限</string>
     <string name="error_ly_wifi_no_location">请开启手机定位服务</string>
     <string name="error_ly_wifi_closed">手机 Wi-Fi 已关闭</string>
     <!-- RTK SoftAP 共用 3501–3505 -->

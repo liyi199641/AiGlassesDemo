@@ -2,6 +2,7 @@ package com.lw.ai.glasses.state
 
 import com.blankj.utilcode.util.LogUtils
 import com.fission.wear.glasses.sdk.AiAssistantClient
+import com.fission.wear.glasses.sdk.manager.assistant.SttDisplayTextMerger
 import com.fission.wear.glasses.sdk.GlassesManage
 import com.fission.wear.glasses.sdk.data.dto.AiChatMessageDTO
 import com.fission.wear.glasses.sdk.data.dto.AiContentType
@@ -30,6 +31,8 @@ data class AiAssistantConversationState(
     val messages: List<AiAssistantEntity> = emptyList(),
     /** 当前正在流式回复的消息 timestamp；历史记录为 null，不参与打字机动画。 */
     val streamingMessageId: Long? = null,
+    /** auto 流式回答每次快照更新 +1，驱动 UI 即时刷新。 */
+    val streamingContentRevision: Int = 0,
 )
 
 /**
@@ -45,6 +48,14 @@ class AiAssistantConversationManager @Inject constructor(
     private var currentMessage: AiAssistantEntity? = null
     /** 停听音频先于 ASR 文本到达时暂存，等有问题文本再挂到气泡上。 */
     private var pendingQuestionAudioPath: String? = null
+    /** STT messageId → 气泡 timestamp（每轮问句唯一）。 */
+    private val sttMessageIdToTurnTimestamp = mutableMapOf<String, Long>()
+    /** auto 连续对话：TTS messageId → 气泡 timestamp（与 STT messageId 不同）。 */
+    private val answerMessageIdToTurnTimestamp = mutableMapOf<String, Long>()
+    /**
+     * semi-auto：STT 定稿后 [currentMessage] 会清空，TTS 增量应挂回该问句气泡（非列表里「有问无音频」的任意一条）。
+     */
+    private var pendingAnswerTurnTimestamp: Long? = null
     private val typewriterProgress = mutableMapOf<Long, StreamState>()
 
     private val _state = MutableStateFlow(AiAssistantConversationState())
@@ -62,6 +73,9 @@ class AiAssistantConversationManager @Inject constructor(
             repository.clearAllMessages()
             currentMessage = null
             pendingQuestionAudioPath = null
+            sttMessageIdToTurnTimestamp.clear()
+            answerMessageIdToTurnTimestamp.clear()
+            pendingAnswerTurnTimestamp = null
             typewriterProgress.clear()
             _state.value = AiAssistantConversationState()
         }
@@ -158,9 +172,6 @@ class AiAssistantConversationManager @Inject constructor(
 
         when {
             questionText.isNotEmpty() -> {
-                if (currentMessage?.answer?.isNotEmpty() == true) {
-                    finalizeCurrentMessage(newList)
-                }
                 val resolvedQuestionAudio =
                     questionAudioPath
                         ?: pendingQuestionAudioPath
@@ -168,26 +179,62 @@ class AiAssistantConversationManager @Inject constructor(
                 if (questionAudioPath != null || pendingQuestionAudioPath != null) {
                     pendingQuestionAudioPath = null
                 }
-                currentMessage = if (
-                    currentMessage?.answer.isNullOrEmpty() &&
-                    currentMessage?.question?.isNotEmpty() == true
-                ) {
-                    currentMessage!!.copy(
-                        question = questionText,
-                        questionType = mapContentType(result.questionType),
-                        questionAudioPath = resolvedQuestionAudio,
-                        messageId = serverMessageId ?: currentMessage!!.messageId,
-                    )
+                val recognized = result.isFinished
+                val isImageQuestion = result.questionType == AiContentType.IMAGE_PATH ||
+                    result.questionType == AiContentType.IMAGE_FILE
+                // 识图照片必须单独成条：无 messageId 时 resolveTurnForQuestion 会误并入当前 STT 文本轮次，
+                // 把路径拼进文案后 UI 无法按图片渲染。
+                val existingTurn = if (isImageQuestion) {
+                    null
                 } else {
+                    resolveTurnForQuestion(newList, serverMessageId)
+                }
+                currentMessage = if (existingTurn != null) {
+                    val mergedQuestion = if (result.questionReplaceWhole) {
+                        SttDisplayTextMerger.merge(
+                            existing = existingTurn.question,
+                            incoming = questionText,
+                            recognized = recognized,
+                        )
+                    } else {
+                        existingTurn.question + questionText
+                    }
+                    val updated = existingTurn.copy(
+                        question = mergedQuestion,
+                        questionType = mapContentType(result.questionType),
+                        questionAudioPath = resolvedQuestionAudio ?: existingTurn.questionAudioPath,
+                        messageId = serverMessageId ?: existingTurn.messageId,
+                    )
+                    bindSttMessageId(updated.messageId, updated.timestamp)
+                    updated
+                } else {
+                    val previous = currentMessage
+                    if (previous != null &&
+                        (previous.answer.isNotEmpty() ||
+                            !previous.answerAudioPath.isNullOrBlank() ||
+                            (isImageQuestion && previous.question.isNotEmpty()))
+                    ) {
+                        // 新开识图轮次前，先落定上一轮（含仅有问句的 STT），避免被覆盖丢失。
+                        finalizeCurrentMessage(newList)
+                    }
+                    pendingAnswerTurnTimestamp?.let { pendingTs ->
+                        val pendingRow = newList.find { it.timestamp == pendingTs }
+                        if (pendingRow == null ||
+                            pendingRow.answer.isNotEmpty() ||
+                            !pendingRow.answerAudioPath.isNullOrBlank()
+                        ) {
+                            pendingAnswerTurnTimestamp = null
+                        }
+                    }
                     AiAssistantEntity(
                         question = questionText,
                         questionType = mapContentType(result.questionType),
                         answer = "",
                         answerType = "",
-                        questionAudioPath = resolvedQuestionAudio,
+                        questionAudioPath = if (isImageQuestion) null else resolvedQuestionAudio,
                         messageId = serverMessageId,
                         timestamp = System.currentTimeMillis(),
-                    )
+                    ).also { bindSttMessageId(serverMessageId, it.timestamp) }
                 }
             }
 
@@ -213,42 +260,36 @@ class AiAssistantConversationManager @Inject constructor(
             }
 
             answerText.isNotEmpty() -> {
-                if (currentMessage?.question?.isNotEmpty() == true && currentMessage!!.answer.isEmpty()) {
-                    finalizeCurrentMessage(newList)
-                }
-                currentMessage = if (currentMessage != null) {
-                    currentMessage!!.copy(
-                        answer = currentMessage!!.answer + answerText,
+                val targetMessage = resolveTurnForAnswer(newList, serverMessageId)
+                currentMessage = if (targetMessage != null) {
+                    bindAnswerMessageId(serverMessageId, targetMessage.timestamp)
+                    val mergedAnswer = mergeStreamingAnswer(
+                        existing = targetMessage.answer,
+                        incoming = answerText,
+                    )
+                    targetMessage.copy(
+                        answer = mergedAnswer,
                         answerType = mapContentType(result.answerType),
-                        messageId = serverMessageId ?: currentMessage!!.messageId,
                     )
                 } else {
-                    findMessageByServerId(newList, serverMessageId)?.let { existing ->
-                        existing.copy(
-                            answer = existing.answer + answerText,
-                            answerType = mapContentType(result.answerType),
-                        )
-                    } ?: AiAssistantEntity(
+                    AiAssistantEntity(
                         question = "",
                         questionType = "",
                         answer = answerText,
                         answerType = mapContentType(result.answerType),
                         messageId = serverMessageId,
                         timestamp = System.currentTimeMillis(),
-                    )
+                    ).also { bindAnswerMessageId(serverMessageId, it.timestamp) }
                 }
             }
 
             answerAudioPath != null -> {
-                val targetMessage = findMessageByServerId(newList, serverMessageId)
-                    ?: currentMessage?.takeIf {
-                        serverMessageId == null || it.messageId == serverMessageId
-                    }
+                val targetMessage = resolveTurnForAnswer(newList, serverMessageId)
                 currentMessage = if (targetMessage != null) {
+                    bindAnswerMessageId(serverMessageId, targetMessage.timestamp)
                     targetMessage.copy(
                         answerAudioPath = answerAudioPath,
                         answerType = mapContentType(result.answerType),
-                        messageId = serverMessageId ?: targetMessage.messageId,
                     )
                 } else {
                     AiAssistantEntity(
@@ -259,7 +300,7 @@ class AiAssistantConversationManager @Inject constructor(
                         answerAudioPath = answerAudioPath,
                         messageId = serverMessageId,
                         timestamp = System.currentTimeMillis(),
-                    )
+                    ).also { bindAnswerMessageId(serverMessageId, it.timestamp) }
                 }
             }
         }
@@ -281,19 +322,60 @@ class AiAssistantConversationManager @Inject constructor(
                 )
                 return
             }
+            val isImageQuestion = result.questionType == AiContentType.IMAGE_PATH ||
+                result.questionType == AiContentType.IMAGE_FILE
+            val bumpStreamingRevision =
+                answerText.isNotEmpty() || result.questionReplaceWhole || isImageQuestion
+            if (bumpStreamingRevision) {
+                syncTypewriterProgressToContent(
+                    timestamp = message.timestamp,
+                    questionLength = message.question.length,
+                    answerLength = message.answer.length,
+                )
+            }
             _state.value = _state.value.copy(
                 messages = newList,
                 streamingMessageId = message.timestamp,
+                streamingContentRevision = if (bumpStreamingRevision) {
+                    _state.value.streamingContentRevision + 1
+                } else {
+                    _state.value.streamingContentRevision
+                },
             )
         }
 
         if (result.isFinished) {
-            currentMessage?.let { finalizeCurrentMessage(newList) }
-            _state.value = _state.value.copy(
-                messages = newList,
-                streamingMessageId = null,
-            )
-            currentMessage = null
+            if (AiAssistantClient.getInstance().isAutoDuplexDialogue()) {
+                // auto：ASR recognized 只表示问句定稿，整轮结束以回答完成为准。
+                val message = currentMessage
+                val turnComplete = message != null &&
+                    (message.answer.isNotEmpty() || !message.answerAudioPath.isNullOrBlank())
+                if (turnComplete || answerAudioPath != null) {
+                    message?.let { finalizeCurrentMessage(newList) }
+                    _state.value = _state.value.copy(
+                        messages = newList,
+                        streamingMessageId = null,
+                    )
+                    currentMessage = null
+                }
+            } else {
+                val finishing = currentMessage
+                if (finishing != null && result.isFinished) {
+                    when {
+                        finishing.question.isNotEmpty() && finishing.answer.isEmpty() &&
+                            finishing.answerAudioPath.isNullOrBlank() ->
+                            pendingAnswerTurnTimestamp = finishing.timestamp
+                        finishing.answer.isNotEmpty() || !finishing.answerAudioPath.isNullOrBlank() ->
+                            pendingAnswerTurnTimestamp = null
+                    }
+                }
+                finishing?.let { finalizeCurrentMessage(newList) }
+                _state.value = _state.value.copy(
+                    messages = newList,
+                    streamingMessageId = null,
+                )
+                currentMessage = null
+            }
         }
     }
 
@@ -344,6 +426,68 @@ class AiAssistantConversationManager @Inject constructor(
         return list.find { it.messageId == serverMessageId }
     }
 
+    /** 同一轮 STT：含「已有回答但问句仍须更新」的定稿/补全场景。 */
+    private fun resolveTurnForQuestion(
+        list: List<AiAssistantEntity>,
+        sttMessageId: String?,
+    ): AiAssistantEntity? {
+        if (!sttMessageId.isNullOrBlank()) {
+            sttMessageIdToTurnTimestamp[sttMessageId]?.let { ts ->
+                list.find { it.timestamp == ts }?.let { return it }
+            }
+            findMessageByServerId(list, sttMessageId)?.let { return it }
+        }
+        currentMessage?.let { cur ->
+            if (sttMessageId.isNullOrBlank()) {
+                if (cur.question.isNotEmpty() && cur.answer.isEmpty()) return cur
+                return@let
+            }
+            if (cur.messageId == sttMessageId) return cur
+        }
+        _state.value.streamingMessageId?.let { streamingTs ->
+            list.find { it.timestamp == streamingTs }?.let { row ->
+                when {
+                    sttMessageId.isNullOrBlank() -> return row
+                    row.messageId.isNullOrBlank() -> return row
+                    row.messageId == sttMessageId -> return row
+                }
+            }
+        }
+        return null
+    }
+
+    private fun bindSttMessageId(sttMessageId: String?, turnTimestamp: Long) {
+        if (!sttMessageId.isNullOrBlank()) {
+            sttMessageIdToTurnTimestamp[sttMessageId] = turnTimestamp
+        }
+    }
+
+    private fun bindAnswerMessageId(answerMessageId: String?, turnTimestamp: Long) {
+        if (!answerMessageId.isNullOrBlank()) {
+            answerMessageIdToTurnTimestamp[answerMessageId] = turnTimestamp
+        }
+    }
+
+    /** 将 TTS/回答侧 messageId 归并到当前轮次气泡（问题侧为 STT messageId）。 */
+    private fun resolveTurnForAnswer(
+        list: List<AiAssistantEntity>,
+        answerServerMessageId: String?,
+    ): AiAssistantEntity? {
+        if (!answerServerMessageId.isNullOrBlank()) {
+            answerMessageIdToTurnTimestamp[answerServerMessageId]?.let { ts ->
+                list.find { it.timestamp == ts }?.let { return it }
+            }
+        }
+        pendingAnswerTurnTimestamp?.let { ts ->
+            list.find { it.timestamp == ts }?.let { return it }
+        }
+        currentMessage?.takeIf {
+            it.question.isNotEmpty() &&
+                (it.answer.isEmpty() || !answerServerMessageId.isNullOrBlank())
+        }?.let { return it }
+        return null
+    }
+
     private fun mapContentType(type: AiContentType): String {
         return when (type) {
             AiContentType.TEXT -> "txt"
@@ -361,5 +505,11 @@ class AiAssistantConversationManager @Inject constructor(
             is File -> any.absolutePath
             else -> any.toString()
         }
+    }
+
+    /** 流式回答：服务端按序下发增量片，auto / semi-auto 均直接拼接。 */
+    private fun mergeStreamingAnswer(existing: String, incoming: String): String {
+        if (incoming.isEmpty()) return existing
+        return existing + incoming
     }
 }

@@ -45,7 +45,7 @@ AI entry point: `AiAssistantClient`. Device-side capture / interrupt APIs remain
 | [AI Translation](#6-ai-translation) | **Two sub-features** (below) | App mic + `startAiTranslation` |
 | └ [Conversation translation](#62-conversation-translation) | Face-to-face: result after each utterance | `AI_ASSISTANT_TYPE_LISTEN_MODE_TRANSLATION` |
 | └ [Real-time translation](#63-real-time-translation) | Continuous listen-and-translate (lectures / movies) | `AI_ASSISTANT_TYPE_LISTEN_MODE_SIMULTANEOUS_INTERPRETATION` |
-| [A/V call translation](#7-av-call-translation) | Bilateral translation inside a Zego call (**separate** from real-time translation) | `getVoiceRoomParams` / `startCall` + `VOICE_TRANSLATION` |
+| [A/V call translation](#7-av-call-translation) | Bilateral translation inside a Zego call (**separate** from real-time translation; requires extra `sdk-ai-call`) | `getVoiceRoomParams` / `startCall` + `VOICE_TRANSLATION` |
 | [Image Translation](#8-image-translation) | Upload image → OCR + translated image | `getImageTransLangList` / `imageTrans` |
 
 Before integrating:
@@ -122,7 +122,7 @@ Notes:
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|:--------:|---------|-------------|
-| `context` | `Context` | Yes | — | App context for Zego / image translation components. |
+| `context` | `Context` | Yes | — | App context for image translation; also used for call components when `sdk-ai-call` is present. |
 | `channel` | `GlassesConstant.ChannelType` | Yes | — | AI channel; **keep aligned with `SdkConfig.channel`**. |
 | `aiModelType` | `GlassesConstant.AiModelVendor` | No | `DEFAULT` | LLM vendor id. |
 | `serverEnvironment` | `GlassesConstant.ServerEnvironment` | No | `DEV` | Preset env; ignored when `customServerEnvironment` is set. |
@@ -131,6 +131,7 @@ Notes:
 | `enableDefaultPlayAgentAudio` | `Boolean` | No | `true` | Whether the SDK auto-plays **AI dialogue reply audio**. Runtime: `setAgentAudioPlaybackEnabled` (see [§5.4](#54-reply-audio-playback-toggle)). |
 | `translationAudioStorageDirName` | `String` | No | `"transAudioFiles"` | Directory name for translation / dialogue audio files. |
 | `aiDialogueLanguage` | `Int` | No | `140` | AI dialogue source `langType`. See [§5.5](#55-source-language). |
+| `enablePlaybackAec` | `Boolean` | No | `false` | Enable glasses-mic **playback AEC** (needed on some LY devices when TTS plays while the mic captures). Applied in `connectAiAssistant`; runtime override: `AiAssistantWsUplinkConfig.uplinkPlaybackAecEnabled`. |
 
 **`aiModelType`**: `DEFAULT` / `QWEN` / `GPT_5O_MINI` / `KIMI_V2`  
 **`serverEnvironment`**: `DEV` / `TEST` / `CHINA` / `EUROPE` / `SINGAPORE` / `CUSTOM`  
@@ -498,6 +499,12 @@ Notes:
 ## 7. A/V call translation
 
 Bilateral real-time translation inside a Zego audio/video call.
+
+> **Dependency**: add `sdk-ai-call` (and `https://maven.zego.im`). Skip this module for AI dialogue / real-time translation only — Zego will not be pulled in.
+
+```gradle
+implementation("com.fission.wear.glasses:sdk-ai-call:last_version")
+```
 
 | | Real-time translation (§6.3) | A/V call translation (this section) |
 |--|------------------------------|-------------------------------------|

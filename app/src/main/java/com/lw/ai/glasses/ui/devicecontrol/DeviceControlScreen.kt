@@ -1,10 +1,14 @@
 package com.lw.ai.glasses.ui.devicecontrol
 
+import android.graphics.BitmapFactory
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -14,18 +18,22 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
@@ -33,6 +41,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -41,12 +50,43 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
-import com.lw.ai.glasses.R
-import android.graphics.BitmapFactory
 import com.fission.wear.glasses.sdk.constant.GlassesConstant
+import com.fission.wear.glasses.sdk.data.model.ThumbnailPhotoConfig
+import com.lw.ai.glasses.R
 import kotlin.math.roundToInt
+
+/** AI 识图分辨率预设：仅保留实机确认可行的档位（photoWidth ≤ 2048）。 */
+private data class ThumbnailResolutionPreset(
+    val width: Int,
+    val height: Int,
+    val label: String,
+)
+
+private val ThumbnailPhotoResolutionPresets = listOf(
+    // 4:3
+    ThumbnailResolutionPreset(640, 480, "640×480 · 4:3"),
+    ThumbnailResolutionPreset(960, 720, "960×720 · 4:3"),
+    ThumbnailResolutionPreset(1280, 960, "1280×960 · 4:3"),
+    ThumbnailResolutionPreset(1600, 1200, "1600×1200 · 4:3"),
+    ThumbnailResolutionPreset(1920, 1440, "1920×1440 · 4:3"),
+    ThumbnailResolutionPreset(2048, 1536, "2048×1536 · 4:3"),
+    // 16:9
+    ThumbnailResolutionPreset(1280, 720, "1280×720 · 16:9"),
+    ThumbnailResolutionPreset(1920, 1080, "1920×1080 · 16:9"),
+    ThumbnailResolutionPreset(2048, 1152, "2048×1152 · 16:9"),
+    // 其它横屏
+    ThumbnailResolutionPreset(1080, 960, "1080×960"),
+    ThumbnailResolutionPreset(1920, 960, "1920×960 · 2:1"),
+    ThumbnailResolutionPreset(1920, 1200, "1920×1200 · 16:10"),
+    ThumbnailResolutionPreset(2048, 1080, "2048×1080"),
+    ThumbnailResolutionPreset(2048, 1280, "2048×1280 · 8:5"),
+    ThumbnailResolutionPreset(2048, 1296, "2048×1296"),
+    // 竖屏（已确认）
+    ThumbnailResolutionPreset(720, 1280, "720×1280 · 9:16"),
+)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -179,13 +219,28 @@ fun DeviceControlScreen(
                     statusActive = uiState.isTakingPhoto,
                     statusVisual = ActionStatusVisual.PHOTO,
                 ) {
-                    ControlButtonRow(
-                        primaryText = stringResource(R.string.take_picture_for_ai),
-                        onPrimaryClick = viewModel::takePictureForAi,
-                        secondaryText = stringResource(R.string.take_picture_to_device),
-                        onSecondaryClick = viewModel::takePictureToDevice
+                    AiThumbnailPhotoGroup(
+                        config = uiState.thumbnailPhotoConfig,
+                        onConfigChange = viewModel::updateThumbnailPhotoConfig,
+                        onTakeAiPhoto = viewModel::takePictureForAi,
+                        aiPhotoBleResult = uiState.aiPhotoBleResult,
                     )
-                    AiPhotoBleResultSection(result = uiState.aiPhotoBleResult)
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(
+                        text = stringResource(R.string.take_picture_to_device_section),
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    Text(
+                        text = stringResource(R.string.take_picture_to_device_section_hint),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 2.dp, bottom = 8.dp),
+                    )
+                    FullWidthButton(
+                        text = stringResource(R.string.take_picture_to_device),
+                        onClick = viewModel::takePictureToDevice,
+                    )
                 }
             }
             item {
@@ -270,6 +325,60 @@ private fun AiPhotoBleResultSection(result: AiPhotoBleResult) {
                 else -> MaterialTheme.colorScheme.onSurfaceVariant
             },
         )
+        if (result.status == AiPhotoBleStatus.Success) {
+            val width = result.imageWidth
+            val height = result.imageHeight
+            val requestedWidth = result.requestedWidth
+            val requestedHeight = result.requestedHeight
+            when {
+                width != null && height != null &&
+                    requestedWidth != null && requestedHeight != null -> {
+                    val mismatched = width != requestedWidth || height != requestedHeight
+                    Text(
+                        text = stringResource(
+                            R.string.ai_photo_ble_resolution_vs_request,
+                            width,
+                            height,
+                            requestedWidth,
+                            requestedHeight,
+                        ),
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = if (mismatched) {
+                            MaterialTheme.colorScheme.error
+                        } else {
+                            MaterialTheme.colorScheme.primary
+                        },
+                    )
+                    if (mismatched) {
+                        Text(
+                            text = stringResource(R.string.ai_photo_ble_resolution_mismatch),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                    }
+                }
+                width != null && height != null -> {
+                    Text(
+                        text = stringResource(
+                            R.string.ai_photo_ble_resolution,
+                            width,
+                            height,
+                        ),
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                }
+                else -> {
+                    Text(
+                        text = stringResource(R.string.ai_photo_ble_resolution_unknown),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
         result.imageBytesSize?.let { size ->
             Text(
                 text = stringResource(R.string.ai_photo_ble_size, formatBytes(size)),
@@ -421,6 +530,152 @@ private fun VolumeControlCard(
             currentVolume = callVolume,
             onVolumeSelected = { viewModel.setVolume(GlassesConstant.AudioVolumeType.CALL, it) }
         )
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun AiThumbnailPhotoGroup(
+    config: ThumbnailPhotoConfig,
+    onConfigChange: (ThumbnailPhotoConfig) -> Unit,
+    onTakeAiPhoto: () -> Unit,
+    aiPhotoBleResult: AiPhotoBleResult,
+) {
+    var widthText by remember(config.photoWidth) { mutableStateOf(config.photoWidth.toString()) }
+    var heightText by remember(config.photoHeight) { mutableStateOf(config.photoHeight.toString()) }
+    var quality by remember(config.photoQuality) { mutableFloatStateOf(config.photoQuality.toFloat()) }
+
+    LaunchedEffect(config.photoWidth) { widthText = config.photoWidth.toString() }
+    LaunchedEffect(config.photoHeight) { heightText = config.photoHeight.toString() }
+    LaunchedEffect(config.photoQuality) { quality = config.photoQuality.toFloat() }
+
+    val outlineShape = RoundedCornerShape(12.dp)
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .border(
+                width = 1.dp,
+                color = MaterialTheme.colorScheme.outline,
+                shape = outlineShape,
+            )
+            .padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text(
+            text = stringResource(R.string.thumbnail_photo_config_title),
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.primary,
+        )
+        Text(
+            text = stringResource(R.string.thumbnail_photo_config_hint),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = stringResource(R.string.thumbnail_photo_play_sound),
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.weight(1f),
+            )
+            Switch(
+                checked = config.playTakePhotoSound,
+                onCheckedChange = { enabled ->
+                    onConfigChange(config.copy(playTakePhotoSound = enabled))
+                },
+            )
+        }
+        Text(
+            text = stringResource(R.string.thumbnail_photo_presets),
+            style = MaterialTheme.typography.bodyMedium,
+        )
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(0.dp),
+        ) {
+            ThumbnailPhotoResolutionPresets.forEach { preset ->
+                val selected =
+                    config.photoWidth == preset.width &&
+                        config.photoHeight == preset.height
+                FilterChip(
+                    selected = selected,
+                    onClick = {
+                        onConfigChange(
+                            config.copy(
+                                photoWidth = preset.width,
+                                photoHeight = preset.height,
+                            ),
+                        )
+                    },
+                    label = { Text(preset.label) },
+                )
+            }
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            OutlinedTextField(
+                value = widthText,
+                onValueChange = { raw ->
+                    widthText = raw.filter { it.isDigit() }.take(5)
+                    val width = widthText.toIntOrNull()?.coerceAtLeast(1) ?: return@OutlinedTextField
+                    onConfigChange(config.copy(photoWidth = width))
+                },
+                label = { Text(stringResource(R.string.thumbnail_photo_width)) },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                modifier = Modifier.weight(1f),
+            )
+            OutlinedTextField(
+                value = heightText,
+                onValueChange = { raw ->
+                    heightText = raw.filter { it.isDigit() }.take(5)
+                    val height = heightText.toIntOrNull()?.coerceAtLeast(1)
+                        ?: return@OutlinedTextField
+                    onConfigChange(config.copy(photoHeight = height))
+                },
+                label = { Text(stringResource(R.string.thumbnail_photo_height)) },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                modifier = Modifier.weight(1f),
+            )
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = stringResource(R.string.thumbnail_photo_quality),
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            Text(
+                text = quality.roundToInt().toString(),
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Medium,
+            )
+        }
+        Slider(
+            value = quality,
+            onValueChange = { quality = it },
+            valueRange = ThumbnailPhotoConfig.PHOTO_QUALITY_MIN.toFloat()..
+                ThumbnailPhotoConfig.PHOTO_QUALITY_MAX.toFloat(),
+            steps = ThumbnailPhotoConfig.PHOTO_QUALITY_MAX -
+                ThumbnailPhotoConfig.PHOTO_QUALITY_MIN - 1,
+            onValueChangeFinished = {
+                onConfigChange(config.copy(photoQuality = quality.roundToInt()))
+            },
+        )
+        FullWidthButton(
+            text = stringResource(R.string.take_picture_for_ai),
+            onClick = onTakeAiPhoto,
+        )
+        AiPhotoBleResultSection(result = aiPhotoBleResult)
     }
 }
 

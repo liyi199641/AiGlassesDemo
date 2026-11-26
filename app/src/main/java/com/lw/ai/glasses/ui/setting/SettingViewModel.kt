@@ -8,7 +8,9 @@ import com.fission.wear.glasses.sdk.AiAssistantClient
 import com.fission.wear.glasses.sdk.constant.GlassesConstant
 import com.fission.wear.glasses.sdk.data.dto.DeviceSettingsStateDTO
 import com.fission.wear.glasses.sdk.data.dto.DeviceVersionInfoDTO
+import com.blankj.utilcode.util.ToastUtils
 import com.fission.wear.glasses.sdk.events.CmdResultEvent
+import com.fission.wear.glasses.sdk.events.UnpairEvent
 import com.lw.ai.glasses.R
 import com.lw.ai.glasses.config.AppConfigLoader
 import com.lw.ai.glasses.config.SdkChannelResolver
@@ -92,6 +94,14 @@ class SettingViewModel @Inject constructor(
                             currentState.copy(
                                 settingItems = newSettingItems,
                                 disconnectAction = currentState.disconnectAction.copy(isEnabled = true)
+                            )
+                        }
+                    }
+
+                    is UnpairEvent.Failed -> {
+                        if (events.needManualSystemUnpair) {
+                            ToastUtils.showLong(
+                                context.getString(R.string.unpair_manual_system_hint),
                             )
                         }
                     }

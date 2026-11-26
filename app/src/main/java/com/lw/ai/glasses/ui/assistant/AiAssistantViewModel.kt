@@ -2,6 +2,7 @@ package com.lw.ai.glasses.ui.assistant
 
 import BaseViewModel
 import android.content.Context
+import com.fission.wear.glasses.sdk.util.AiSessionLocationResolver
 import androidx.lifecycle.viewModelScope
 import com.blankj.utilcode.util.LogUtils
 import com.fission.wear.glasses.sdk.GlassesManage
@@ -9,6 +10,7 @@ import com.fission.wear.glasses.sdk.AiAssistantClient
 import com.fission.wear.glasses.sdk.constant.GlassesConstant.BtMediaKeyAction
 import com.fission.wear.glasses.sdk.data.model.McpScheduleData
 import com.fission.wear.glasses.sdk.events.AgentEvent
+import com.fission.wear.glasses.sdk.events.AiAssistantEvent
 import com.fission.wear.glasses.sdk.events.AudioStateEvent
 import com.fission.wear.glasses.sdk.events.CmdResultEvent
 import com.google.gson.Gson
@@ -44,11 +46,21 @@ class AiAssistantViewModel @Inject constructor(
     val showConfirmDialog: StateFlow<Boolean> = _showConfirmDialog.asStateFlow()
 
     private var mediaPlayer: android.media.MediaPlayer? = null
+    private var locationPermissionRequested = false
     private val _navigateToCalendar = MutableSharedFlow<McpScheduleData>()
     val navigateToCalendar: SharedFlow<McpScheduleData> = _navigateToCalendar.asSharedFlow()
 
+    private val _requestLocationPermission = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+    val requestLocationPermission: SharedFlow<Unit> = _requestLocationPermission.asSharedFlow()
+
+    private val _openAppSettingsForLocation = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+    val openAppSettingsForLocation: SharedFlow<Unit> = _openAppSettingsForLocation.asSharedFlow()
+
     private val _pendingCalendarEvent = MutableStateFlow<McpScheduleData?>(null)
     val pendingCalendarEvent: SharedFlow<McpScheduleData?> = _pendingCalendarEvent.asStateFlow()
+
+    private val _wsServiceErrorDialog = MutableStateFlow<WsServiceErrorDialogState?>(null)
+    val wsServiceErrorDialog: StateFlow<WsServiceErrorDialogState?> = _wsServiceErrorDialog.asStateFlow()
 
     /**
      * 触发显示确认弹窗（暂存日程事件）
@@ -92,14 +104,44 @@ class AiAssistantViewModel @Inject constructor(
             it.copy(
                 agentAudioPlaybackEnabled = AiAssistantClient.getInstance()
                     .isAgentAudioPlaybackEnabled(),
+                showQuestionAudioPlayback = !AiAssistantClient.getInstance()
+                    .isAutoDuplexDialogue(),
             )
         }
         loadLanguages()
         observeConversationState()
         observeGlobalWsConnectionState()
         observeScheduleEvents()
+        observeWsServiceErrors()
         observeAiDialogueState()
         observeDeviceButtonEvents()
+    }
+
+    fun dismissWsServiceErrorDialog() {
+        _wsServiceErrorDialog.value = null
+    }
+
+    private fun presentWsServiceError(code: Int, message: String) {
+        val text = message.ifBlank { "code=$code" }
+        _wsServiceErrorDialog.value = WsServiceErrorDialogState(code = code, message = text)
+    }
+
+    private fun observeWsServiceErrors() {
+        viewModelScope.launch {
+            AiAssistantClient.getInstance().aiAgentEventFlow().collect { event ->
+                when (event) {
+                    is AgentEvent.DeviceAiServiceError -> {
+                        presentWsServiceError(event.data.code, event.data.errorMsg)
+                    }
+                    is AiAssistantEvent.Failed -> {
+                        if (event.code >= 510_000) {
+                            presentWsServiceError(event.code, event.reason)
+                        }
+                    }
+                    else -> Unit
+                }
+            }
+        }
     }
 
     private fun loadLanguages() {
@@ -134,6 +176,49 @@ class AiAssistantViewModel @Inject constructor(
         _uiState.update { it.copy(selectedLanguage = language) }
     }
 
+    fun refreshLocationPermissionState() {
+        val granted = AiSessionLocationResolver.hasLocationPermission(context)
+        _uiState.update { it.copy(locationPermissionGranted = granted) }
+    }
+
+    fun onScreenResume() {
+        val wasGranted = _uiState.value.locationPermissionGranted
+        refreshLocationPermissionState()
+        if (!wasGranted && _uiState.value.locationPermissionGranted) {
+            AiAssistantClient.getInstance().reportClientConfig()
+        }
+    }
+
+    private fun requestLocationPermissionOnce() {
+        viewModelScope.launch {
+            _requestLocationPermission.emit(Unit)
+        }
+    }
+
+    fun onLocationPermissionResult(granted: Boolean) {
+        locationPermissionRequested = true
+        refreshLocationPermissionState()
+        if (granted) {
+            AiAssistantClient.getInstance().reportClientConfig()
+        }
+    }
+
+    /** 无定位权限时：优先再次系统授权，否则跳转应用详情设置。 */
+    fun onLocationAccessAction(shouldShowRationale: Boolean) {
+        if (AiSessionLocationResolver.hasLocationPermission(context)) {
+            refreshLocationPermissionState()
+            AiAssistantClient.getInstance().reportClientConfig()
+            return
+        }
+        if (shouldShowRationale || !locationPermissionRequested) {
+            requestLocationPermissionOnce()
+        } else {
+            viewModelScope.launch {
+                _openAppSettingsForLocation.emit(Unit)
+            }
+        }
+    }
+
     fun clearAllMessages() {
         conversationManager.clearAllMessages()
     }
@@ -149,6 +234,12 @@ class AiAssistantViewModel @Inject constructor(
     /** 进入 AI 助手界面时调用：已收到的流式内容直接展示，不再从头打字。 */
     fun onScreenVisible() {
         conversationManager.syncStreamingTypewriterProgressToContent()
+        refreshLocationPermissionState()
+        if (!AiSessionLocationResolver.hasLocationPermission(context)) {
+            requestLocationPermissionOnce()
+        } else {
+            AiAssistantClient.getInstance().reportClientConfig()
+        }
         _uiState.update { it.copy(typewriterRevision = it.typewriterRevision + 1) }
     }
 
@@ -247,6 +338,7 @@ class AiAssistantViewModel @Inject constructor(
                     it.copy(
                         messages = conversation.messages,
                         streamingMessageId = conversation.streamingMessageId,
+                        streamingContentRevision = conversation.streamingContentRevision,
                     )
                 }
             }

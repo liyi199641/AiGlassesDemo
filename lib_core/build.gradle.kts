@@ -24,7 +24,7 @@ val packagingEnabled: Boolean = cfg("CONFIG_ENABLED", "false").toBoolean()
 
 android {
     namespace = "com.lw.top.lib_core"
-    compileSdk = 36
+    compileSdk = 37
 
     defaultConfig {
         minSdk = 26

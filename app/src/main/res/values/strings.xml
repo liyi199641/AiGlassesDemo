@@ -33,6 +33,10 @@
     <string name="auto_connect_ai_settings">AI Connection</string>
     <string name="auto_connect_ai_settings_hint">When enabled, AI service is activated after glasses connect</string>
     <string name="auto_connect_ai_label">Enable AI</string>
+    <string name="ai_continuous_dialogue_label">AI continuous Q&amp;A</string>
+    <string name="ai_continuous_dialogue_hint">Default on: Linwear continuous (realtime + auto). Off: one-shot Q&amp;A (voice + semi-auto). Toggling disconnects and reconnects the AI service.</string>
+    <string name="ai_continuous_xueqiu_label">Xueqiu continuous</string>
+    <string name="ai_continuous_xueqiu_hint">Only when continuous Q&amp;A is on: hello sends ai_provider=xueqiu on realtime endpoints.</string>
     <string name="environment_switch">Environment Switch</string>
     <string name="environment_switch_hint">Applies globally after selection and is saved</string>
     <string name="sdk_channel_settings">SDK Channel</string>
@@ -69,8 +73,8 @@
     <string name="local_base_url_scheme_invalid">Base URL must start with http:// or https://</string>
     <string name="local_ws_empty">Enter the custom environment AI service address</string>
     <string name="local_ws_scheme_invalid">AI service address must start with ws:// or wss://</string>
-    <string name="local_base_url_placeholder">https://192.168.1.100:8080/</string>
-    <string name="local_ws_url_placeholder">ws://192.168.1.100:3000</string>
+    <string name="local_base_url_placeholder">https://aigc-dev.watch-devs.com</string>
+    <string name="local_ws_url_placeholder">wss://realtime-china.watch-devs.com/ai-agent/{Client-Id}/ai-voice?device-id={Device-Id}&amp;device-model={Device-Model}</string>
     <string name="env_dev">Development</string>
     <string name="env_test">Testing</string>
     <string name="env_china">Production (China)</string>
@@ -98,6 +102,15 @@
     <string name="take_picture">Take Photo</string>
     <string name="take_picture_for_ai">Photo for AI</string>
     <string name="take_picture_to_device">Save Photo on Device</string>
+    <string name="thumbnail_photo_config_title">AI Recognition Photo (RTK only)</string>
+    <string name="thumbnail_photo_config_hint">These options apply only to “Photo for AI”. Default 960×720, quality 5. Presets are verified working sizes; photoWidth max is 2048 — larger values fall back to 640×480.</string>
+    <string name="thumbnail_photo_play_sound">Play shutter sound</string>
+    <string name="thumbnail_photo_presets">Resolution presets</string>
+    <string name="thumbnail_photo_width">Width</string>
+    <string name="thumbnail_photo_height">Height</string>
+    <string name="thumbnail_photo_quality">JPEG Quality</string>
+    <string name="take_picture_to_device_section">Save Photo on Device</string>
+    <string name="take_picture_to_device_section_hint">Local storage photo. Does not use the AI recognition options above.</string>
     <string name="burst_test_title">Burst Test</string>
     <string name="burst_test_summary">Take multiple photos to device storage; each shot waits until pending sync count +1</string>
     <string name="burst_test_count_label">Photo count</string>
@@ -133,6 +146,10 @@
     <string name="ai_photo_ble_status_success">BLE upload completed</string>
     <string name="ai_photo_ble_status_failed">BLE upload failed</string>
     <string name="ai_photo_ble_size">Image size: %1$s</string>
+    <string name="ai_photo_ble_resolution">Returned resolution: %1$d×%2$d</string>
+    <string name="ai_photo_ble_resolution_vs_request">Returned: %1$d×%2$d · Requested: %3$d×%4$d</string>
+    <string name="ai_photo_ble_resolution_mismatch">Returned size differs from request (likely firmware fallback, e.g. 640×480).</string>
+    <string name="ai_photo_ble_resolution_unknown">Returned resolution: unavailable</string>
     <string name="ai_photo_ble_file_path">Saved to: %1$s</string>
     <string name="ai_photo_ble_ai_warning">AI recognition note: %1$s</string>
     <string name="ai_photo_ble_preview">AI photo preview</string>
@@ -188,6 +205,7 @@
 
     <string name="settings_title">Device Settings</string>
     <string name="disconnect_connection">Disconnect</string>
+    <string name="unpair_manual_system_hint">Failed to remove the Bluetooth pairing. Please forget the glasses in system Bluetooth settings.</string>
     <string name="reboot_device">Reboot Device</string>
     <string name="reboot_device_confirm_message">Reboot the glasses?</string>
     <string name="restore_factory">Factory Reset</string>
@@ -259,11 +277,15 @@
     <string name="agent_audio_playback_off">Reply audio off</string>
     <string name="toggle_agent_audio_playback">Toggle AI reply audio playback</string>
     <string name="ai_dialogue_language">Dialogue language</string>
+    <string name="ai_assistant_location_permission_hint">Location access improves AI context. Without permission, coordinates are reported as 0.</string>
+    <string name="ai_assistant_location_permission_action">Enable location</string>
     <string name="ai_assistant_device_control">Device AI control</string>
     <string name="ai_assistant_dialogue_in_progress">AI dialogue in progress</string>
 
     <string name="add_calendar_confirm_title">Add Calendar Event?</string>
     <string name="ai_assistant_title">AI Assistant</string>
+    <string name="ai_assistant_ws_error_title">AI service error</string>
+    <string name="ai_assistant_ws_error_body">%1$s\n(Error code %2$d)</string>
     <string name="empty_ai_conversation">No conversation yet. Ask the glasses a question.</string>
     <string name="question_image">Question Image</string>
     <string name="answer_image">Answer Image</string>
@@ -423,7 +445,7 @@
     <string name="error_ly_wifi_negotiation_timeout">Wi-Fi negotiation timed out</string>
     <string name="error_ly_wifi_unknown">Wi-Fi connection failed</string>
     <string name="error_ly_wifi_open_error">Failed to enable glasses Wi-Fi hotspot</string>
-    <string name="error_ly_wifi_no_permission">Missing Wi-Fi / location permission</string>
+    <string name="error_ly_wifi_no_permission">Missing Wi-Fi, location, or local network permission</string>
     <string name="error_ly_wifi_no_location">Please turn on location services</string>
     <string name="error_ly_wifi_closed">Phone Wi-Fi is off</string>
     <!-- RTK SoftAP shared 3501–3505 -->

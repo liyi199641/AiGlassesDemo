@@ -11,7 +11,6 @@ import com.blankj.utilcode.util.LogUtils
 import com.blankj.utilcode.util.ToastUtils
 import com.fission.wear.glasses.sdk.AiAssistantClient
 import com.fission.wear.glasses.sdk.GlassesManage
-import com.fission.wear.glasses.sdk.config.AiAgentConfig
 import com.fission.wear.glasses.sdk.config.BleComConfig
 import com.fission.wear.glasses.sdk.config.BleScanConfig
 import com.fission.wear.glasses.sdk.config.SdkConfig
@@ -24,10 +23,10 @@ import com.fission.wear.glasses.sdk.state.SdkBleConnectionState
 import com.fission.wear.glasses.sdk.state.SdkBtConnectionState
 import com.fission.wear.glasses.sdk.state.GlassesConnectionState
 import com.fission.wear.glasses.sdk.data.model.ScannedBleDevice
-import com.fission.wear.glasses.sdk.data.model.toHexStringUnsigned
 import com.fission.wear.glasses.sdk.util.BleAdvertisementParser
-import com.fission.wear.glasses.sdk.util.FissionLogUtils
+import com.fission.wear.glasses.sdk.util.LocalNetworkPermission
 import com.lw.ai.glasses.R
+import com.lw.ai.glasses.config.AiAgentConfigBuilder
 import com.lw.ai.glasses.config.AiDialogueLanguageDefaults
 import com.lw.ai.glasses.config.AppConfigLoader
 import com.lw.ai.glasses.config.ProductSeriesResolver
@@ -76,6 +75,7 @@ class HomeViewModel @Inject constructor(
     /** 用户主动发起连接，在 SDK 上报 Connecting 前保持首页「连接中」。 */
     private var pendingUserConnect = false
     private var sawSdkConnecting = false
+    private var currentSdkChannel: GlassesConstant.ChannelType = SdkChannelResolver.defaultChannel
 
     init {
         observeSavedDeviceBinding()
@@ -89,6 +89,7 @@ class HomeViewModel @Inject constructor(
     private fun observeSdkChannel() {
         viewModelScope.launch {
             val channel = SdkChannelResolver.loadForSdkInit(bluetoothDataManager, appDataManager)
+            currentSdkChannel = channel
             _uiState.update {
                 it.copy(showBtConnectionStatus = channel != GlassesConstant.ChannelType.RTK)
             }
@@ -149,6 +150,9 @@ class HomeViewModel @Inject constructor(
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             permissionsNeeded.add(Manifest.permission.NEARBY_WIFI_DEVICES)
             permissionsNeeded.add(Manifest.permission.POST_NOTIFICATIONS)
+        }
+        if (LocalNetworkPermission.isPlatformAtLeastAndroid17()) {
+            permissionsNeeded.add(LocalNetworkPermission.PERMISSION)
         }
         return permissionsNeeded
     }
@@ -218,6 +222,9 @@ class HomeViewModel @Inject constructor(
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             permissions.add(Manifest.permission.NEARBY_WIFI_DEVICES)
             permissions.add(Manifest.permission.POST_NOTIFICATIONS)
+        }
+        if (LocalNetworkPermission.isPlatformAtLeastAndroid17()) {
+            permissions.add(LocalNetworkPermission.PERMISSION)
         }
 
         if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.Q) {
@@ -421,6 +428,7 @@ class HomeViewModel @Inject constructor(
             ?: bluetoothDataManager.getBluetoothAdapter()
         val productSeries = ProductSeriesResolver.resolve(resolvedName, resolvedAdaptation)
         val channel = channelType ?: SdkChannelResolver.loadForSdkInit(bluetoothDataManager, appDataManager)
+        currentSdkChannel = channel
         LogUtils.i(
             "HomeViewModel",
             "init SDK channel=${channel.name} productSeries=${productSeries.code} deviceName=$resolvedName"
@@ -437,19 +445,13 @@ class HomeViewModel @Inject constructor(
         _uiState.update {
             it.copy(showBtConnectionStatus = channel != GlassesConstant.ChannelType.RTK)
         }
-        val localConfig = AppConfigLoader.localCustomEnvironment(snapshot)
-        if (localConfig != null) {
-            AiAssistantClient.getInstance().applyServerEnvironmentToGlobals(localConfig)
-        } else {
-            AiAssistantClient.getInstance().applyServerEnvironmentToGlobals(snapshot.selectedEnvironment)
-        }
+        val resolved = AiAgentConfigBuilder.resolveEnvironment(snapshot)
+        AiAgentConfigBuilder.applyResolvedEnvironmentToGlobals(resolved)
         AiAssistantClient.getInstance().initializeAiClient(
-            AiAgentConfig(
+            AiAgentConfigBuilder.buildAiAgentConfig(
                 context = context,
                 channel = channel,
-                aiModelType = GlassesConstant.AiModelVendor.DEFAULT,
-                serverEnvironment = snapshot.selectedEnvironment,
-                customServerEnvironment = localConfig,
+                resolved = resolved,
                 enableDefaultPlaySimultaneousAudio = false,
                 aiDialogueLanguage = AiDialogueLanguageDefaults.defaultLangType(),
             ),

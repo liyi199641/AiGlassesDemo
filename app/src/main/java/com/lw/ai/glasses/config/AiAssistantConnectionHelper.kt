@@ -2,8 +2,6 @@ package com.lw.ai.glasses.config
 
 import android.content.Context
 import com.fission.wear.glasses.sdk.AiAssistantClient
-import com.fission.wear.glasses.sdk.config.AiAgentConfig
-import com.fission.wear.glasses.sdk.constant.GlassesConstant
 import com.lw.ai.glasses.config.AiDialogueLanguageDefaults
 import com.lw.top.lib_core.data.datastore.AppDataManager
 import com.lw.top.lib_core.data.datastore.BluetoothDataManager
@@ -46,22 +44,26 @@ object AiAssistantConnectionHelper {
     ) {
         val snapshot = AppConfigLoader.loadSnapshot(appDataManager)
         val channel = SdkChannelResolver.loadForSdkInit(bluetoothDataManager, appDataManager)
-        val localConfig = AppConfigLoader.localCustomEnvironment(snapshot)
-        if (localConfig != null) {
-            AiAssistantClient.getInstance().applyServerEnvironmentToGlobals(localConfig)
-        } else {
-            AiAssistantClient.getInstance().applyServerEnvironmentToGlobals(snapshot.selectedEnvironment)
-        }
+        val resolved = AiAgentConfigBuilder.resolveEnvironment(snapshot)
+        AiAgentConfigBuilder.applyResolvedEnvironmentToGlobals(resolved)
         AiAssistantClient.getInstance().initializeAiClient(
-            AiAgentConfig(
+            AiAgentConfigBuilder.buildAiAgentConfig(
                 context = context,
                 channel = channel,
-                aiModelType = GlassesConstant.AiModelVendor.DEFAULT,
-                serverEnvironment = snapshot.selectedEnvironment,
-                customServerEnvironment = localConfig,
+                resolved = resolved,
                 enableDefaultPlaySimultaneousAudio = false,
                 aiDialogueLanguage = AiDialogueLanguageDefaults.defaultLangType(),
             ),
         )
+    }
+
+    suspend fun reinitializeAndReconnect(
+        context: Context,
+        appDataManager: AppDataManager,
+        bluetoothDataManager: BluetoothDataManager,
+    ) {
+        AiAssistantClient.getInstance().disconnect()
+        initializeAiClient(context, appDataManager, bluetoothDataManager)
+        connectIfEnabled(appDataManager, bluetoothDataManager)
     }
 }

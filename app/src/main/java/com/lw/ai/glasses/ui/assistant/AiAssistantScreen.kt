@@ -1,7 +1,14 @@
 package com.lw.ai.glasses.ui.assistant
 
+import android.Manifest
+import android.app.Activity
 import android.content.Intent
+import android.net.Uri
 import android.provider.CalendarContract
+import android.provider.Settings
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.app.ActivityCompat
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
@@ -55,6 +62,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -77,6 +87,7 @@ import com.lw.ai.glasses.ui.theme.components.TypewriterText
 import com.lw.ai.glasses.ui.translate.Language
 import com.lw.ai.glasses.ui.translate.LanguageSelectionSheet
 import com.lw.top.lib_core.data.local.entity.AiAssistantEntity
+import java.io.File
 import kotlinx.coroutines.flow.collectLatest
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -90,7 +101,16 @@ fun AiAssistantScreen(
     val context = LocalContext.current
     val dialogContent by viewModel.pendingCalendarEvent.collectAsStateWithLifecycle(null)
     val showConfirmDialog by viewModel.showConfirmDialog.collectAsStateWithLifecycle()
+    val wsServiceErrorDialog by viewModel.wsServiceErrorDialog.collectAsStateWithLifecycle()
     var showLanguageSheet by remember { mutableStateOf(false) }
+    val activity = context as? Activity
+
+    val locationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions(),
+    ) { result ->
+        val granted = result.values.any { it }
+        viewModel.onLocationPermissionResult(granted)
+    }
 
     LaunchedEffect(Unit) {
         viewModel.navigateToCalendar.collectLatest { event ->
@@ -99,13 +119,62 @@ fun AiAssistantScreen(
     }
 
     LaunchedEffect(Unit) {
+        viewModel.requestLocationPermission.collect {
+            locationPermissionLauncher.launch(
+                arrayOf(
+                    Manifest.permission.ACCESS_FINE_LOCATION,
+                    Manifest.permission.ACCESS_COARSE_LOCATION,
+                ),
+            )
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        viewModel.openAppSettingsForLocation.collect {
+            val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                data = Uri.fromParts("package", context.packageName, null)
+            }
+            context.startActivity(intent)
+        }
+    }
+
+    LaunchedEffect(Unit) {
         viewModel.onScreenVisible()
     }
 
-    DisposableEffect(Unit) {
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                viewModel.onScreenResume()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
         onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
             viewModel.onScreenHidden()
         }
+    }
+
+    wsServiceErrorDialog?.let { error ->
+        AlertDialog(
+            onDismissRequest = { viewModel.dismissWsServiceErrorDialog() },
+            title = { Text(text = stringResource(R.string.ai_assistant_ws_error_title)) },
+            text = {
+                Text(
+                    text = stringResource(
+                        R.string.ai_assistant_ws_error_body,
+                        error.message,
+                        error.code,
+                    ),
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { viewModel.dismissWsServiceErrorDialog() }) {
+                    Text(text = stringResource(R.string.confirm))
+                }
+            },
+        )
     }
 
     if (showConfirmDialog) {
@@ -165,6 +234,19 @@ fun AiAssistantScreen(
                         .background(MaterialTheme.colorScheme.surface)
                         .navigationBarsPadding(),
                 ) {
+                    if (!uiState.locationPermissionGranted) {
+                        LocationPermissionHintBar(
+                            onEnableClick = {
+                                val rationale = activity?.let {
+                                    ActivityCompat.shouldShowRequestPermissionRationale(
+                                        it,
+                                        Manifest.permission.ACCESS_FINE_LOCATION,
+                                    )
+                                } ?: false
+                                viewModel.onLocationAccessAction(rationale)
+                            },
+                        )
+                    }
                     AiDeviceControlBar(
                         isAiDialogueInProgress = uiState.isAiDialogueInProgress,
                         onStartAi = viewModel::startAiAssistant,
@@ -184,6 +266,8 @@ fun AiAssistantScreen(
                 messages = uiState.messages,
                 streamingMessageId = uiState.streamingMessageId,
                 typewriterRevision = uiState.typewriterRevision,
+                showQuestionAudioPlayback = uiState.showQuestionAudioPlayback,
+                streamingContentRevision = uiState.streamingContentRevision,
                 playingAnswerAudioPath = uiState.playingAnswerAudioPath,
                 playingQuestionAudioPath = uiState.playingQuestionAudioPath,
                 isAiDialogueInProgress = uiState.isAiDialogueInProgress,
@@ -201,6 +285,29 @@ fun AiAssistantScreen(
             onReconnect = viewModel::reconnectWebSocket,
             modifier = Modifier.align(Alignment.TopCenter),
         )
+    }
+}
+
+@Composable
+private fun LocationPermissionHintBar(
+    onEnableClick: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Text(
+            text = stringResource(R.string.ai_assistant_location_permission_hint),
+            modifier = Modifier.weight(1f),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        OutlinedButton(onClick = onEnableClick) {
+            Text(stringResource(R.string.ai_assistant_location_permission_action))
+        }
     }
 }
 
@@ -318,6 +425,8 @@ private fun ConversationList(
     messages: List<AiAssistantEntity>,
     streamingMessageId: Long?,
     typewriterRevision: Int,
+    showQuestionAudioPlayback: Boolean,
+    streamingContentRevision: Int,
     playingAnswerAudioPath: String?,
     playingQuestionAudioPath: String?,
     isAiDialogueInProgress: Boolean,
@@ -355,11 +464,17 @@ private fun ConversationList(
                 key = { _, message -> message.timestamp }) { _, message ->
                 val isStreamingMessage = streamingMessageId != null &&
                     message.timestamp == streamingMessageId
-                val typewriterProgress = remember(message.timestamp, typewriterRevision) {
+                val typewriterProgress = remember(
+                    message.timestamp,
+                    typewriterRevision,
+                    streamingContentRevision,
+                ) {
                     getTypewriterProgress(message.timestamp)
                 }
                 MessageBubble(
                     message = message,
+                    showQuestionAudioPlayback = showQuestionAudioPlayback,
+                    streamingAnswerInstant = isStreamingMessage,
                     enableTypewriter = isStreamingMessage,
                     typewriterProgress = typewriterProgress,
                     onTypewriterProgressUpdate = { questionLength, answerLength ->
@@ -380,6 +495,8 @@ private fun ConversationList(
 @Composable
 private fun MessageBubble(
     message: AiAssistantEntity,
+    showQuestionAudioPlayback: Boolean,
+    streamingAnswerInstant: Boolean,
     enableTypewriter: Boolean,
     typewriterProgress: StreamState,
     onTypewriterProgressUpdate: (questionLength: Int?, answerLength: Int?) -> Unit,
@@ -390,9 +507,13 @@ private fun MessageBubble(
     onPlayAnswerAudio: (String) -> Unit,
 ) {
     Column(modifier = Modifier.fillMaxWidth()) {
-        // 仅在有 ASR 文本时展示问题气泡与录音；纯音频默认不显示。
-        val questionAudioPath = message.questionAudioPath
-            ?.takeIf { it.isNotBlank() && message.question.isNotEmpty() }
+        // semi-auto：有 ASR 文本时可展示问题录音；auto 全双工不展示问题侧回放。
+        val questionAudioPath = if (showQuestionAudioPlayback) {
+            message.questionAudioPath
+                ?.takeIf { it.isNotBlank() && message.question.isNotEmpty() }
+        } else {
+            null
+        }
         if (message.question.isNotEmpty()) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -440,7 +561,8 @@ private fun MessageBubble(
                         answerAudioPath = answerAudioPath,
                         isAnswerAudioPlaying = isAnswerAudioPlaying,
                         isAnswerAudioPlayable = isAnswerAudioPlayable,
-                        enableAnimation = enableTypewriter && message.answer.isNotEmpty(),
+                        enableAnimation = enableTypewriter && !streamingAnswerInstant && message.answer.isNotEmpty(),
+                        instantStreamingAnswer = streamingAnswerInstant,
                         displayedLength = typewriterProgress.displayedAnswerLength,
                         onAnimationEnd = {
                             onTypewriterProgressUpdate(null, it)
@@ -494,7 +616,7 @@ private fun QuestionMessageCard(
                 if (hasText) {
                     if (questionType == "image") {
                         AsyncImage(
-                            model = question,
+                            model = localImageModel(question),
                             contentDescription = questionImage,
                             modifier = Modifier
                                 .padding(horizontal = 12.dp, vertical = 10.dp)
@@ -562,6 +684,7 @@ private fun AnswerMessageCard(
     isAnswerAudioPlaying: Boolean,
     isAnswerAudioPlayable: Boolean,
     enableAnimation: Boolean,
+    instantStreamingAnswer: Boolean = false,
     displayedLength: Int,
     onAnimationEnd: (Int) -> Unit,
     onPlayAnswerAudio: (String) -> Unit,
@@ -596,7 +719,12 @@ private fun AnswerMessageCard(
                 )
             },
             text = {
-                if (enableAnimation && answer.isNotEmpty()) {
+                if (instantStreamingAnswer && hasText) {
+                    Text(
+                        text = answer,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+                    )
+                } else if (enableAnimation && answer.isNotEmpty()) {
                     TypewriterText(
                         textToAnimate = answer,
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
@@ -780,7 +908,7 @@ private fun MessageContent(
 
     if (type == "image") {
         AsyncImage(
-            model = content,
+            model = localImageModel(content),
             contentDescription = if (isQuestion) questionImage else answerImage,
             modifier = Modifier
                 .widthIn(max = 240.dp)
@@ -807,6 +935,18 @@ private fun MessageContent(
             }
         }
     }
+}
+
+/** Coil3：本地绝对路径用 [File]，网络 URL 仍用原字符串。 */
+private fun localImageModel(pathOrUrl: String): Any {
+    if (pathOrUrl.startsWith("http://", ignoreCase = true) ||
+        pathOrUrl.startsWith("https://", ignoreCase = true) ||
+        pathOrUrl.startsWith("content://", ignoreCase = true) ||
+        pathOrUrl.startsWith("file://", ignoreCase = true)
+    ) {
+        return pathOrUrl
+    }
+    return File(pathOrUrl)
 }
 
 /**

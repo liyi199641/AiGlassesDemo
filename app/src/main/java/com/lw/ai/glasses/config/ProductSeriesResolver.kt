@@ -24,7 +24,8 @@ object ProductSeriesResolver {
 
     fun fromDeviceName(deviceName: String?): GlassesConstant.ProductSeries {
         val name = deviceName?.trim().orEmpty()
-        if (name.contains("AG19", ignoreCase = true) || name.contains("AG17", ignoreCase = true)) {
+        if (name.contains("AG19", ignoreCase = true) || name.contains("AG17", ignoreCase = true) ||
+            name.contains("AG68SE", ignoreCase = true) || name.contains("AG68SE", ignoreCase = true)) {
             return GlassesConstant.ProductSeries.T
         }
         return GlassesConstant.ProductSeries.S

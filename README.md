@@ -44,6 +44,8 @@
 android:name="android.permission.NEARBY_WIFI_DEVICES"
 android:usesPermissionFlags="neverForLocation"
 tools:targetApi="33" />
+<!-- Android 17+ 访问眼镜 AP（192.168.x.x）局域网 -->
+<uses-permission android:name="android.permission.ACCESS_LOCAL_NETWORK" tools:targetApi="37" />
 <!-- AI 翻译、音视频通话（手机端采集） -->
 <uses-permission android:name="android.permission.RECORD_AUDIO"/>
 <!-- 视频通话 -->
@@ -52,9 +54,6 @@ tools:targetApi="33" />
 <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 <uses-permission android:name="android.permission.WAKE_LOCK" />
 ```
-
----
-
 ## **2. 添加依赖（必须）**
 
 ### 2.0+（推荐，按方案拆分）
@@ -63,13 +62,16 @@ tools:targetApi="33" />
 
 ```gradle
 // 必选
-implementation("com.fission.wear.glasses:sdk-core:last_version")
+implementation("com.fission.wear.glasses:sdk-core:2.0.3")
 implementation("io.reactivex.rxjava3:rxjava:3.1.6")
 
 // 按需（可多选）
-implementation("com.fission.wear.glasses:sdk-ly:last_version")    // LY
-implementation("com.fission.wear.glasses:sdk-rtk:last_version")   // RTK
-implementation("com.fission.wear.glasses:sdk-tb:last_version")  // TB
+implementation("com.fission.wear.glasses:sdk-ly:2.0.3")    // LY
+implementation("com.fission.wear.glasses:sdk-rtk:2.0.3")   // RTK
+implementation("com.fission.wear.glasses:sdk-tb:2.0.1")  // TB
+
+// 可选：音视频通话翻译（即构）。仅 AI 对话 / 翻译时不要引入
+implementation("com.fission.wear.glasses:sdk-ai-call:2.0.1")
 ```
 
 > **最低系统版本**：Android 7.0（API 24）。宿主 App 的 `minSdk` 不得低于 24。
@@ -92,6 +94,7 @@ dependencyResolutionManagement {
         google()
         mavenCentral()
         maven { url = uri("https://repo.repsy.io/mvn/linwear/android") }
+        // 引入 sdk-ai-call（音视频通话翻译）时还需
         maven { url = uri("https://maven.zego.im") }
         // 引入 sdk-tb 时还需
         maven { url = uri("https://maven.topstepht.com/repository/maven-public/") }
@@ -125,7 +128,7 @@ android {
 | 模块 | 入口 | 职责 |
 |------|------|------|
 | 眼镜 SDK | `GlassesManage.initialize(SdkConfig)` | BLE 扫描/连接、设备指令、OTA、媒体同步等 |
-| AI 客户端 | `AiAssistantClient.getInstance().initializeAiClient(AiAgentConfig)` | AI 服务、语音助手、翻译、图片翻译、即构通话等 |
+| AI 客户端 | `AiAssistantClient.getInstance().initializeAiClient(AiAgentConfig)` | AI 服务、语音助手、翻译、图片翻译等；即构通话需额外引入 `sdk-ai-call` |
 
 参考 Demo（`LinWearApplication` + `AppStartupReconnectManager`），推荐顺序如下：
 
@@ -280,8 +283,8 @@ AI 客户端配置（`initializeAiClient(AiAgentConfig)`）的完整参数表、
 
 | API | LY | RTK | TB | 说明 |
 |-----|:--:|:---:|:--:|------|
-| `takePicture` | ✓ | ✓ | ✓ | |
-| `setLifePhotoConfig` | — | ✓ | — | **仅 RTK**：高清拍照分辨率 / JPEG / 旋转 |
+| `takePicture` | ✓ | ✓ | ✓ | RTK 在 `takePhotoOnly=true` 时可传 [`ThumbnailPhotoConfig`](#thumbnailphotoconfig-仅-rtk-ai-识图)（宽高 / JPEG / 快门声）；LY / TB 忽略该参数 |
+| `setLifePhotoConfig` | — | ✓ | — | **仅 RTK**：高清拍照（Life Photo）分辨率 / JPEG / 旋转 |
 | `setWifiApConfig` | — | ✓ | — | **仅 RTK**：修改 SoftAP 名称与密码 |
 | `startDeviceRecording` / `stopDeviceRecording` | ✓ | ✓ | ✓ | 录音 |
 | `startDeviceVideoRecording` / `stopDeviceVideoRecording` | ✓ | ✓ | ✓ | 录像 |
@@ -401,6 +404,8 @@ GlassesManage.disConnect(unpair = true)
 ```
 
 > `unpair = true`（默认）：断开连接，并清除手机系统蓝牙中的配对记录。需已申请 `BLUETOOTH_CONNECT`（Android 12+）。
+
+> **Android 17（API≥37）**：连接成功后 SDK 自动申请 Companion 关联（LY：BT/A2DP 连上；RTK：BLE 连上）；一键解绑时若已关联则静默 `CompanionDeviceManager.removeBond`，否则反射 `removeBond`。失败时发 `UnpairEvent.Failed(needManualSystemUnpair=true)`，请引导用户去系统设置取消配对。
 
 ### **5.2 订阅 BLE + BT 连接状态（推荐）**
 
@@ -857,6 +862,7 @@ Demo（`app` 模块）对接抖音直播时，需使用与抖音开放平台登�
 | | `Failed` | 连接失败 |
 | `BtConnectEvent` | `Bonding` / `Bonded` / `BondFailed` | 经典蓝牙配对（LY 等方案，SDK 内部驱动） |
 | | `A2dpConnected` / `HfpConnected` 等 | 音频 Profile 状态变化 |
+| `UnpairEvent` | `Success` / `Failed` | 一键解绑结果；`Failed.needManualSystemUnpair == true` 时请引导用户去系统设置取消配对（见 [5.1](#51-连接--断开-ble)） |
 
 手动重连 BT：**LY / TB** 见 [第 5.3 节](#53-手动重连-btly--tb)。
 
@@ -1091,8 +1097,8 @@ GlassesManage.getActionState()      // CmdResultEvent.ActionSync（type: ActionS
 | `stopDeviceRecording()` | 停止眼镜端录音 |
 | `startDeviceVideoRecording()` | 开始眼镜端录像 |
 | `stopDeviceVideoRecording()` | 停止眼镜端录像 |
-| `takePicture(takePhotoOnly: Boolean)` | 拍照。`true`：AI 识图，图片回传 App；`false`：保存到眼镜本地存储 |
-| `setLifePhotoConfig(config: LifePhotoConfig)` | **仅 RTK**：配置高清拍照参数（分辨率 / JPEG 质量 / 旋转）。异步结果见 `CmdResultEvent.LifePhotoConfigResult` |
+| `takePicture(takePhotoOnly: Boolean, thumbnailConfig: ThumbnailPhotoConfig = ThumbnailPhotoConfig.DEFAULT)` | 拍照。`true`：AI 识图，图片回传 App；`false`：保存到眼镜本地存储。[`thumbnailConfig`](#thumbnailphotoconfig-仅-rtk-ai-识图) **仅 RTK** 在 `takePhotoOnly=true` 时生效（LY / TB 忽略） |
+| `setLifePhotoConfig(config: LifePhotoConfig)` | **仅 RTK**：配置高清拍照（Life Photo）参数（分辨率 / JPEG 质量 / 旋转）。异步结果见 `CmdResultEvent.LifePhotoConfigResult` |
 
 ```kotlin
 GlassesManage.startDeviceRecording()
@@ -1101,7 +1107,20 @@ GlassesManage.stopDeviceRecording()
 GlassesManage.startDeviceVideoRecording()
 GlassesManage.stopDeviceVideoRecording()
 
-GlassesManage.takePicture(takePhotoOnly = true)   // AI 识图
+// AI 识图（默认缩略图参数：960×720、质量 5）
+GlassesManage.takePicture(takePhotoOnly = true)
+
+// RTK：AI 识图时可传入 ThumbnailPhotoConfig（宽高 / JPEG 质量 / 是否播放快门声）
+GlassesManage.takePicture(
+    takePhotoOnly = true,
+    thumbnailConfig = ThumbnailPhotoConfig(
+        photoWidth = 960,
+        photoHeight = 720,
+        photoQuality = 5,              // 1–9
+        playTakePhotoSound = false,
+    ),
+)
+
 GlassesManage.takePicture(takePhotoOnly = false)  // 保存到眼镜
 
 // RTK：配置高清拍照参数（须在 takePicture(false) 前按需调用）
@@ -1115,12 +1134,25 @@ GlassesManage.setLifePhotoConfig(
 )
 ```
 
+##### ThumbnailPhotoConfig（仅 RTK AI 识图）
+
+对应 RTK `ThumbnailPhotoConfigInfo.Builder`，仅在 `takePicture(takePhotoOnly = true)` 路径使用；`takePhotoOnly = false` 与 LY / TB 忽略。
+
+| 字段 | 默认 | 说明 |
+|------|------|------|
+| `photoWidth` | `960` | 缩略图宽度 |
+| `photoHeight` | `720` | 缩略图高度 |
+| `photoQuality` | `5` | JPEG 质量，范围 1–9 |
+| `playTakePhotoSound` | `true` | 是否播放快门声 |
+
+> 拍照类型固定为缩略图（`TYPE_TAKE_THUMBNAIL`），无需额外配置。
+
 **回调事件**：
 - 拍照 / 识图：`CmdResultEvent.ImageData`（原始字节）或 `CmdResultEvent.ImageFile`（本地文件路径，视渠道而定）
 - 高清拍照参数（RTK）：`CmdResultEvent.LifePhotoConfigResult(success)`
 - 自定义大模型录音：见 [眼镜原始音频流说明](Glasses-Raw-Audio-Stream.md)（LY / TB / RTK 格式、采样率、帧大小）与 `AudioStateEvent`
 
-> 分辨率须为传感器实际支持值；`jpegQuality` 范围 1–9；`rotationDegrees` 仅 0/90/180/270。LY / TB 调用为空操作。
+> Life Photo：分辨率须为传感器实际支持值；`jpegQuality` 范围 1–9；`rotationDegrees` 仅 0/90/180/270。LY / TB 调用 `setLifePhotoConfig` 为空操作。
 
 ---
 
@@ -1244,7 +1276,7 @@ Demo：`UpdateViewModel.startRtkOtaUpgrade()` 支持分别选择 BT bin 与 WiFi
 | 3003 | ERROR_CODE_WIFI_NEGOTIATION_TIMEOUT | 协商超时 |
 | 3004 | ERROR_CODE_WIFI_UNKNOWN_ERROR | 未知错误 |
 | 3005 | ERROR_CODE_WIFI_OPEN_ERROR | 开启 Wi-Fi AP 热点失败（**LY 方案**；RTK 见 3501） |
-| 3006 | ERROR_CODE_WIFI_NO_PERMISSION | 缺少 Wi-Fi 连接权限：未授予 `ACCESS_FINE_LOCATION`；Android 13（API 33）及以上还需 `NEARBY_WIFI_DEVICES` |
+| 3006 | ERROR_CODE_WIFI_NO_PERMISSION | 缺少 Wi-Fi 连接权限：未授予 `ACCESS_FINE_LOCATION`；Android 13（API 33）及以上还需 `NEARBY_WIFI_DEVICES`；**Android 17（API 37）且 targetSdk≥37 时还需 `ACCESS_LOCAL_NETWORK`**（连眼镜 AP 网关 / 局域网 HTTP，详见 [本地网络权限](https://developer.android.google.cn/privacy-and-security/local-network-permission)） |
 | 3007 | ERROR_CODE_WIFI_NO_OPEN_LOCATION | 位置服务未开启 |
 | 3008 | ERROR_CODE_WIFI_CLOSED | Wi-Fi 已关闭 |
 
@@ -1297,9 +1329,9 @@ Demo：`UpdateViewModel.startRtkOtaUpgrade()` 支持分别选择 BT bin 与 WiFi
 | 4004 | ERROR_CODE_OTA_UPGRADE_FAILED | ISP 升级失败（设备返回 Upgrade_err） |
 | 4005 | ERROR_CODE_OTA_FILE_OR_VERSION_INVALID | OTA 资源或版本号无效（LY ISP OTA） |
 
-### 🤖 AI 助手错误（500001 - 500003）
+### 🤖 AI 助手错误（500001 - 510007）
 
-详见 **[AI 文档 §11](AI-README.md#11-错误码)**。
+详见 **[AI 文档 §11](AI-README.md#11-错误码)**。500001–500005 时 SDK 停止 WSS 自动重连。
 
 ### 📺 直播错误（3201 - 3214）
 

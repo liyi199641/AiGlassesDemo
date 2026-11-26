@@ -17,4 +17,9 @@ data class AiAssistantUiState(
     val typewriterRevision: Int = 0,
     val allLanguages: List<Language> = emptyList(),
     val selectedLanguage: Language? = null,
+    val locationPermissionGranted: Boolean = false,
+    /** semi-auto 一问一答展示用户录音；auto 全双工为持续收音，不展示问题侧回放。 */
+    val showQuestionAudioPlayback: Boolean = true,
+    /** auto 流式回答内容版本，与 [typewriterRevision] 一并驱动列表刷新。 */
+    val streamingContentRevision: Int = 0,
 )

@@ -2,11 +2,13 @@ package com.lw.ai.glasses.ui.devicecontrol
 
 import BaseViewModel
 import android.content.Context
+import android.graphics.BitmapFactory
 import androidx.lifecycle.viewModelScope
 import com.blankj.utilcode.util.ToastUtils
 import com.fission.wear.glasses.sdk.GlassesManage
 import com.fission.wear.glasses.sdk.constant.GlassesConstant
 import com.fission.wear.glasses.sdk.constant.GlassesConstant.ERROR_CODE_IMAGE_RECOGNITION
+import com.fission.wear.glasses.sdk.data.model.ThumbnailPhotoConfig
 import com.fission.wear.glasses.sdk.events.CmdResultEvent
 import com.lw.ai.glasses.R
 import com.lw.ai.glasses.state.DeviceActionStateManager
@@ -48,6 +50,7 @@ class DeviceControlViewModel @Inject constructor(
             systemVolume = local.systemVolume,
             mediaVolume = local.mediaVolume,
             callVolume = local.callVolume,
+            thumbnailPhotoConfig = local.thumbnailPhotoConfig,
             featuresConfigInfo = local.featuresConfigInfo,
             featureSupportRows = local.featureSupportRows,
             isTakingPhoto = action.isTakingPhoto,
@@ -94,12 +97,19 @@ class DeviceControlViewModel @Inject constructor(
 
                     is CmdResultEvent.ImageData -> {
                         if (!_localState.value.awaitingAiPhotoBleResult) return@collect
+                        val bytes = event.data.toByteArray()
+                        val size = decodeImageBounds(bytes)
                         _localState.update {
+                            val prev = it.aiPhotoBleResult
                             it.copy(
                                 awaitingAiPhotoBleResult = false,
                                 aiPhotoBleResult = AiPhotoBleResult(
                                     status = AiPhotoBleStatus.Success,
-                                    imageBytesSize = event.data.size,
+                                    imageBytesSize = bytes.size,
+                                    imageWidth = size?.first,
+                                    imageHeight = size?.second,
+                                    requestedWidth = prev.requestedWidth,
+                                    requestedHeight = prev.requestedHeight,
                                 ),
                             )
                         }
@@ -112,15 +122,21 @@ class DeviceControlViewModel @Inject constructor(
                             return@collect
                         }
                         val file = event.imageFile
+                        val size = file?.absolutePath?.let(::decodeImageBoundsFromFile)
                         _localState.update {
+                            val prev = it.aiPhotoBleResult
                             it.copy(
                                 awaitingAiPhotoBleResult = false,
                                 aiPhotoBleResult = AiPhotoBleResult(
                                     status = AiPhotoBleStatus.Success,
                                     imageFilePath = file?.absolutePath,
                                     imageBytesSize = file?.length()?.toInt()
-                                        ?: it.aiPhotoBleResult.imageBytesSize,
-                                    aiRecognitionWarning = it.aiPhotoBleResult.aiRecognitionWarning,
+                                        ?: prev.imageBytesSize,
+                                    imageWidth = size?.first ?: prev.imageWidth,
+                                    imageHeight = size?.second ?: prev.imageHeight,
+                                    requestedWidth = prev.requestedWidth,
+                                    requestedHeight = prev.requestedHeight,
+                                    aiRecognitionWarning = prev.aiRecognitionWarning,
                                 ),
                             )
                         }
@@ -148,10 +164,13 @@ class DeviceControlViewModel @Inject constructor(
                             return@collect
                         }
                         _localState.update {
+                            val prev = it.aiPhotoBleResult
                             it.copy(
                                 awaitingAiPhotoBleResult = false,
                                 aiPhotoBleResult = AiPhotoBleResult(
                                     status = AiPhotoBleStatus.Failed,
+                                    requestedWidth = prev.requestedWidth,
+                                    requestedHeight = prev.requestedHeight,
                                     errorMessage = event.msg,
                                 ),
                             )
@@ -171,6 +190,18 @@ class DeviceControlViewModel @Inject constructor(
 
     fun loadCurrentVolume() {
         GlassesManage.getVolume()
+    }
+
+    fun updateThumbnailPhotoConfig(config: ThumbnailPhotoConfig) {
+        val normalized = config.copy(
+            photoWidth = config.photoWidth.coerceAtLeast(1),
+            photoHeight = config.photoHeight.coerceAtLeast(1),
+            photoQuality = config.photoQuality.coerceIn(
+                ThumbnailPhotoConfig.PHOTO_QUALITY_MIN,
+                ThumbnailPhotoConfig.PHOTO_QUALITY_MAX,
+            ),
+        )
+        _localState.update { it.copy(thumbnailPhotoConfig = normalized) }
     }
 
     fun loadDeviceSupportedFeatures() {
@@ -240,13 +271,32 @@ class DeviceControlViewModel @Inject constructor(
     }
 
     fun takePictureForAi() = sendCommand {
+        val config = _localState.value.thumbnailPhotoConfig
         _localState.update {
             it.copy(
                 awaitingAiPhotoBleResult = true,
-                aiPhotoBleResult = AiPhotoBleResult(status = AiPhotoBleStatus.Waiting),
+                aiPhotoBleResult = AiPhotoBleResult(
+                    status = AiPhotoBleStatus.Waiting,
+                    requestedWidth = config.photoWidth,
+                    requestedHeight = config.photoHeight,
+                ),
             )
         }
-        GlassesManage.takePicture(takePhotoOnly = true)
+        GlassesManage.takePicture(takePhotoOnly = true, thumbnailConfig = config)
+    }
+
+    private fun decodeImageBounds(bytes: ByteArray): Pair<Int, Int>? {
+        val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)
+        if (options.outWidth <= 0 || options.outHeight <= 0) return null
+        return options.outWidth to options.outHeight
+    }
+
+    private fun decodeImageBoundsFromFile(path: String): Pair<Int, Int>? {
+        val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeFile(path, options)
+        if (options.outWidth <= 0 || options.outHeight <= 0) return null
+        return options.outWidth to options.outHeight
     }
 
     fun takePictureToDevice() = sendCommand {
@@ -277,6 +327,7 @@ private data class DeviceControlLocalState(
     val systemVolume: Int = 0,
     val mediaVolume: Int = 0,
     val callVolume: Int = 0,
+    val thumbnailPhotoConfig: ThumbnailPhotoConfig = ThumbnailPhotoConfig.DEFAULT,
     val featuresConfigInfo: com.fission.wear.glasses.sdk.data.model.GlassesFeaturesConfigInfo? = null,
     val featureSupportRows: List<FeatureSupportRow> = emptyList(),
     val awaitingAiPhotoBleResult: Boolean = false,

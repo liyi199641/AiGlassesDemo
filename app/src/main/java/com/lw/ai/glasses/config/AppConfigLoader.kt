@@ -11,13 +11,16 @@ object AppConfigLoader {
         val localEnvironmentBaseUrl: String,
         val localEnvironmentWsUrl: String,
         val autoConnectAi: Boolean,
+        val aiContinuousDialogue: Boolean = AppDataManager.DEFAULT_AI_CONTINUOUS_DIALOGUE,
+        val aiContinuousXueqiu: Boolean = AppDataManager.DEFAULT_AI_CONTINUOUS_XUEQIU,
     )
 
     suspend fun loadSnapshot(appDataManager: AppDataManager): Snapshot {
         val localBaseUrl = appDataManager.getLocalEnvironmentBaseUrl()
             ?: GlassesConstant.ServerEnvironment.CUSTOM.baseUrl
-        val localWsUrl = appDataManager.getLocalEnvironmentWsUrl()
-            ?: GlassesConstant.ServerEnvironment.CUSTOM.wsUrl
+        val localWsUrl = GlassesConstant.ServerEnvironment.customWsUrlOrDefault(
+            appDataManager.getLocalEnvironmentWsUrl(),
+        )
         val savedEnv = appDataManager.getEnvironment()
             ?.let(GlassesConstant.ServerEnvironment::fromPersistedName)
             ?: GlassesConstant.ServerEnvironment.entries.firstOrNull {
@@ -30,6 +33,8 @@ object AppConfigLoader {
             localEnvironmentBaseUrl = localBaseUrl,
             localEnvironmentWsUrl = localWsUrl,
             autoConnectAi = appDataManager.getAutoConnectAiEnabled(),
+            aiContinuousDialogue = appDataManager.getAiContinuousDialogueEnabled(),
+            aiContinuousXueqiu = appDataManager.getAiContinuousXueqiuEnabled(),
         )
     }
 
